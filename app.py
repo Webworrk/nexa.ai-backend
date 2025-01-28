@@ -152,11 +152,14 @@ def start_call():
         
         print("VAPI Assistant ID:", vapi_assistant_id)
         
-        # 4. Prepare request - Updated payload structure
+        # 4. Prepare request - Updated payload structure according to Vapi docs
         payload = {
-            "name": "Networking Call with Nexa",
+            "recipientId": phone_number,  # Using phone number as recipient ID
             "assistantId": vapi_assistant_id,
-            "phone": phone_number  # Changed: Moving phone number to root level
+            "metadata": {
+                "name": "Networking Call with Nexa",
+                "phoneNumber": phone_number
+            }
         }
         
         print("Sending payload to VAPI:", payload)
@@ -168,7 +171,7 @@ def start_call():
 
         # 5. Make request
         response = requests.post(
-            "https://api.vapi.ai/call",
+            "https://api.vapi.ai/calls",  # Changed to /calls endpoint
             json=payload,
             headers=headers,
             timeout=30
