@@ -131,22 +131,26 @@ def handle_call():
 
     return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
-
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
+
+    # ✅ Validate that 'customer' exists and is a dictionary
     customer_data = data.get("customer", {})
+    if not isinstance(customer_data, dict):
+        return jsonify({"error": "Invalid format! 'customer' must be an object"}), 400
 
-    if not isinstance(customer_data, dict) or "phoneNumber" not in customer_data:
-        return jsonify({"error": "Invalid format! 'customer' must be an object containing 'phoneNumber'"}), 400
+    # ✅ Extract phone number
+    user_phone = customer_data.get("phoneNumber")
+    if not user_phone:
+        return jsonify({"error": "Phone number is required!"}), 400
 
-    user_phone = customer_data["phoneNumber"]  # ✅ Extract phone number directly
-
+    # ✅ Prepare API payload in the correct format
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
-        "customer": {
-            "phoneNumber": user_phone  # ✅ Direct property inside `customer`
+        "customer": {  # ✅ 'customer' should have 'phoneNumber' directly
+            "phoneNumber": user_phone
         }
     }
 
