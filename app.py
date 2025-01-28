@@ -139,13 +139,14 @@ def start_call():
     if not user_phone:
         return jsonify({"error": "Phone number is required!"}), 400
 
+    # ✅ Ensure phone number is in E.164 format (must start with '+')
+    if not user_phone.startswith("+"):
+        return jsonify({"error": "Invalid phone number format! Use E.164 format like +1234567890"}), 400
+
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
-        "phoneNumber": {  # ✅ Fix: Make phoneNumber an object
-            "number": user_phone,
-            "type": "user"
-        }
+        "phoneNumber": user_phone  # ✅ Send in correct format
     }
 
     headers = {
