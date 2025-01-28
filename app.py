@@ -136,8 +136,7 @@ def start_call():
 
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": None,  # Use a predefined assistant ID from Vapi.ai
-        "destination": user_phone
+        "assistantId": VAPI_ASSISTANT_ID  # Using your new assistantId
     }
 
     headers = {
@@ -151,7 +150,6 @@ def start_call():
         return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
     else:
         return jsonify({"error": "Failed to initiate call", "details": response.text}), 500
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
