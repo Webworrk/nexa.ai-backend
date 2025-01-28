@@ -143,7 +143,11 @@ def start_call():
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": {"number": user_phone}  # Correct JSON structure
+        "phoneNumber": {
+            "twilioPhoneNumber": user_phone,  # Twilio format required by Vapi
+            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
+            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN")
+        }
     }
 
     headers = {
