@@ -132,12 +132,12 @@ def handle_call():
     return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
 
-# Start Call API
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
-    phone_data = data.get("phoneNumber", {})  # Fetch nested object safely
-    user_phone = phone_data.get("twilioPhoneNumber")  # Correctly extract the number
+    customer_data = data.get("customer", {})  # Fetch nested customer object safely
+    phone_data = customer_data.get("phoneNumber", {})  # Extract phone number correctly
+    user_phone = phone_data.get("twilioPhoneNumber")  # Get the phone number
 
     if not user_phone:
         return jsonify({"error": "Phone number is required!"}), 400
@@ -145,7 +145,7 @@ def start_call():
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
-        "customer": {  # ✅ Fix: Vapi requires `customer` field
+        "customer": {  
             "phoneNumber": {
                 "twilioPhoneNumber": user_phone
             }
