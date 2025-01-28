@@ -132,6 +132,7 @@ def handle_call():
     return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
 
+# Start Call API
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
@@ -143,16 +144,16 @@ def start_call():
 
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": {
-            "twilioPhoneNumber": user_phone,  # Must be in E.164 format
-            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
-            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN")
+        "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
+        "customer": {  # ✅ Fix: Vapi requires `customer` field
+            "phoneNumber": {
+                "twilioPhoneNumber": user_phone
+            }
         }
     }
 
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
         "Content-Type": "application/json"
     }
 
@@ -162,8 +163,6 @@ def start_call():
         return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
     else:
         return jsonify({"error": "Failed to initiate call", "details": response.text}), 500
-
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
