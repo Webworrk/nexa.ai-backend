@@ -140,13 +140,13 @@ def start_call():
     if not isinstance(customer_data, dict) or "phoneNumber" not in customer_data:
         return jsonify({"error": "Invalid format! 'customer' must be an object containing 'phoneNumber'"}), 400
 
-    user_phone = customer_data["phoneNumber"]
+    user_phone = customer_data["phoneNumber"]  # ✅ Extract phone number directly
 
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
         "customer": {
-            "phoneNumber": user_phone  # ✅ Vapi requires customer object
+            "phoneNumber": user_phone  # ✅ Direct property inside `customer`
         }
     }
 
