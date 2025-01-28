@@ -1,3 +1,4 @@
+import requests
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -10,11 +11,11 @@ load_dotenv()
 app = Flask(__name__)
 
 # MongoDB Configuration
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://webworrkteam:Ranjith%40003@cluster0.yr247.mongodb.net/Nexa")
+# MongoDB Configuration
+MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client["Nexa"]  # Database name
-users_collection = db["Users"]  # Collection for users
-network_pool = db["NetworkPool"]  # Collection for network profiles
+db = client["Nexa"]
+users_collection = db["Users"]
 
 @app.route("/", methods=["GET"])
 def home():
@@ -97,6 +98,33 @@ def log_call(phone):
 
     users_collection.update_one({"Phone": phone}, {"$push": {"Calls": call_log}})
     return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 201
+
+# Vapi.ai Configuration
+VAPI_API_KEY = os.getenv("VAPI_API_KEY")
+VAPI_ENDPOINT = "https://api.vapi.ai/v1/call"
+
+# Handle Incoming Calls from Vapi.ai
+@app.route("/handle-call", methods=["POST"])
+def handle_call():
+    data = request.json
+    user_phone = data.get("phone", "Not Mentioned")
+    transcript = data.get("transcript", "")
+
+    # Find user by phone number
+    user = users_collection.find_one({"Phone": user_phone})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Store transcript as a logged call
+    call_log = {
+        "Call Number": len(user.get("Calls", [])) + 1,
+        "Transcript": transcript,
+        "Status": "Processed"
+    }
+
+    users_collection.update_one({"Phone": user_phone}, {"$push": {"Calls": call_log}})
+
+    return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
