@@ -133,38 +133,72 @@ def handle_call():
 
 @app.route("/start-call", methods=["POST"])
 def start_call():
-    data = request.json
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
 
-    # ✅ Validate that 'customer' exists and is a dictionary
-    customer_data = data.get("customer", {})
-    if not isinstance(customer_data, dict):
-        return jsonify({"error": "Invalid format! 'customer' must be an object"}), 400
+        # Extract phone number - handle both direct phone number and nested customer object
+        phone_number = None
+        if "customer" in data:
+            if isinstance(data["customer"], dict):
+                phone_number = data["customer"].get("phoneNumber")
+            else:
+                return jsonify({"error": "Customer must be an object"}), 400
+        else:
+            phone_number = data.get("phoneNumber")
 
-    # ✅ Extract phone number
-    user_phone = customer_data.get("phoneNumber")
-    if not user_phone:
-        return jsonify({"error": "Phone number is required!"}), 400
+        if not phone_number:
+            return jsonify({"error": "Phone number is required"}), 400
 
-    # ✅ Prepare API payload in the correct format
-    payload = {
-        "name": "Networking Call with Nexa",
-        "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
-        "customer": {  # ✅ 'customer' should have 'phoneNumber' directly
-            "phoneNumber": user_phone
+        # Verify API credentials
+        vapi_api_key = os.getenv("VAPI_API_KEY")
+        vapi_assistant_id = os.getenv("VAPI_ASSISTANT_ID")
+        
+        if not vapi_api_key or not vapi_assistant_id:
+            return jsonify({"error": "Missing VAPI credentials"}), 500
+
+        # Prepare the payload for VAPI
+        payload = {
+            "name": "Networking Call with Nexa",
+            "assistantId": vapi_assistant_id,
+            "customer": {
+                "phoneNumber": phone_number
+            }
         }
-    }
 
-    headers = {
-        "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
-        "Content-Type": "application/json"
-    }
+        headers = {
+            "Authorization": f"Bearer {vapi_api_key}",
+            "Content-Type": "application/json"
+        }
 
-    response = requests.post("https://api.vapi.ai/call", json=payload, headers=headers)
+        # Make the API call
+        response = requests.post(
+            "https://api.vapi.ai/call", 
+            json=payload, 
+            headers=headers,
+            timeout=10  # Add timeout
+        )
 
-    if response.status_code == 200:
-        return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
-    else:
-        return jsonify({"error": "Failed to initiate call", "details": response.text}), 500
+        # Check response
+        response.raise_for_status()
+        
+        return jsonify({
+            "message": "Call initiated successfully!", 
+            "response": response.json()
+        }), 200
 
+    except requests.exceptions.RequestException as e:
+        # Handle network or API errors
+        return jsonify({
+            "error": "Failed to communicate with VAPI service",
+            "details": str(e)
+        }), 500
+    except Exception as e:
+        # Handle any other unexpected errors
+        return jsonify({
+            "error": "An unexpected error occurred",
+            "details": str(e)
+        }), 500
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
