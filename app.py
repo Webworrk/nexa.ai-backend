@@ -135,28 +135,20 @@ def handle_call():
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
-    customer_data = data.get("customer", {})  # Fetch the customer object
+    customer_data = data.get("customer", {})
 
-    if not isinstance(customer_data, dict):  # Ensure it's an object
-        return jsonify({"error": "Invalid format! 'customer' must be an object."}), 400
+    if not isinstance(customer_data, dict) or "phoneNumber" not in customer_data:
+        return jsonify({"error": "Invalid format! 'customer' must be an object containing 'phoneNumber'"}), 400
 
-    # Extract either customerId or phoneNumber
-    customer_id = customer_data.get("customerId")
-    user_phone = customer_data.get("phoneNumber")
-
-    if not customer_id and not user_phone:
-        return jsonify({"error": "Either 'customerId' or 'phoneNumber' is required!"}), 400
+    user_phone = customer_data["phoneNumber"]
 
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
-        "customer": {}  # ✅ Ensure it's an object
+        "customer": {
+            "phoneNumber": user_phone  # ✅ Vapi requires customer object
+        }
     }
-
-    if customer_id:
-        payload["customer"]["customerId"] = customer_id
-    elif user_phone:
-        payload["customer"]["phoneNumber"] = user_phone
 
     headers = {
         "Authorization": f"Bearer {os.getenv('VAPI_API_KEY')}",
