@@ -131,7 +131,6 @@ def handle_call():
 
     return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
-# ✅ Initiate Call via Vapi.ai
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
@@ -142,7 +141,8 @@ def start_call():
 
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": VAPI_ASSISTANT_ID  # ✅ This should now work correctly
+        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
+        "phoneNumber": user_phone  # ✅ Added user phone number
     }
 
     headers = {
@@ -156,6 +156,7 @@ def start_call():
         return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
     else:
         return jsonify({"error": "Failed to initiate call", "details": response.text}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
