@@ -134,19 +134,16 @@ def handle_call():
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
-    user_phone = data.get("phone")
+    phone_data = data.get("phoneNumber", {})  # Fetch nested object safely
+    user_phone = phone_data.get("number")  # Extract the number
 
     if not user_phone:
         return jsonify({"error": "Phone number is required!"}), 400
 
-    # ✅ Ensure phone number is in E.164 format (must start with '+')
-    if not user_phone.startswith("+"):
-        return jsonify({"error": "Invalid phone number format! Use E.164 format like +1234567890"}), 400
-
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
-        "phoneNumber": user_phone  # ✅ Send in correct format
+        "assistantId": VAPI_ASSISTANT_ID,
+        "phoneNumber": {"number": user_phone}  # Correct JSON structure
     }
 
     headers = {
@@ -160,6 +157,7 @@ def start_call():
         return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
     else:
         return jsonify({"error": "Failed to initiate call", "details": response.text}), 500
+
 
 
 if __name__ == "__main__":
