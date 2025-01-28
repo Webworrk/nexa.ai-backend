@@ -135,9 +135,14 @@ def start_call():
         return jsonify({"error": "Phone number is required!"}), 400
 
     payload = {
-        "to": user_phone,
-        "voice": "en-US-Neural2-F",
-        "script": "Hello, I am Nexa, your networking assistant! Let's get started."
+        "name": "Networking Call with Nexa",
+        "assistantId": None,  # Use a predefined assistant if available
+        "messages": [
+            {
+                "role": "assistant",
+                "message": "Hello, I am Nexa, your networking assistant! Let's get started."
+            }
+        ]
     }
 
     headers = {
@@ -145,7 +150,7 @@ def start_call():
         "Content-Type": "application/json"
     }
 
-    response = requests.post("https://api.vapi.ai/v1/calls", json=payload, headers=headers)
+    response = requests.post("https://api.vapi.ai/call", json=payload, headers=headers)
 
     if response.status_code == 200:
         return jsonify({"message": "Call initiated successfully!", "response": response.json()}), 200
