@@ -154,11 +154,13 @@ def start_call():
         
         # 4. Prepare request - Updated payload structure according to Vapi docs
         payload = {
-            "recipientId": phone_number,  # Using phone number as recipient ID
+            "name": "Networking Call with Nexa",
             "assistantId": vapi_assistant_id,
-            "metadata": {
-                "name": "Networking Call with Nexa",
-                "phoneNumber": phone_number
+            "type": "outboundPhoneCall",  # Specify call type
+            "customer": {
+                "number": phone_number,
+                "numberE164CheckEnabled": True,
+                "name": "Nexa Customer"
             }
         }
         
@@ -171,7 +173,7 @@ def start_call():
 
         # 5. Make request
         response = requests.post(
-            "https://api.vapi.ai/calls",  # Changed to /calls endpoint
+            "https://api.vapi.ai/call",
             json=payload,
             headers=headers,
             timeout=30
@@ -195,6 +197,7 @@ def start_call():
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
