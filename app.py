@@ -1,39 +1,102 @@
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
+from dotenv import load_dotenv
+import os
 
+# Load environment variables
+load_dotenv()
+
+# Initialize Flask app
 app = Flask(__name__)
 
 # MongoDB Configuration
-client = MongoClient("mongodb+srv://webworrkteam:Ranjith%40003@cluster0.yr247.mongodb.net/Nexa")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://webworrkteam:Ranjith%40003@cluster0.yr247.mongodb.net/Nexa")
+client = MongoClient(MONGO_URI)
 db = client["Nexa"]  # Database name
 users_collection = db["Users"]  # Collection for users
+network_pool = db["NetworkPool"]  # Collection for network profiles
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Welcome to Nexa Backend!"}), 200
+    return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
 
-# Endpoint to register a new user
+# Register a new user
 @app.route("/register", methods=["POST"])
 def register_user():
     data = request.json
-    name = data.get("name")
-    email = data.get("email")
-    phone = data.get("phone")
+    name = data.get("name", "Not Mentioned")
+    email = data.get("email", "Not Mentioned")
+    phone = data.get("phone", "Not Mentioned")
 
-    if not all([name, email, phone]):
-        return jsonify({"error": "All fields (name, email, phone) are required!"}), 400
+    # Check if user exists
+    existing_user = users_collection.find_one({"Phone": phone})
+    if existing_user:
+        return jsonify({"error": "User already exists!", "nexa_id": existing_user["Nexa ID"]}), 409
 
+    # Create user document
     user = {
         "Name": name,
         "Email": email,
         "Phone": phone,
-        "nexa_id": f"NEXA{users_collection.count_documents({}) + 1:04d}",
+        "Profession": "Not Mentioned",
+        "Bio": "Not Mentioned",
         "Signup Status": "Completed",
+        "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
         "Calls": []
     }
-
     users_collection.insert_one(user)
-    return jsonify({"message": "User registered successfully!", "nexa_id": user["nexa_id"]}), 201
+    return jsonify({"message": "User registered successfully!", "nexa_id": user["Nexa ID"]}), 201
+
+# Retrieve user profile
+@app.route("/user/<phone>", methods=["GET"])
+def get_user(phone):
+    user = users_collection.find_one({"Phone": phone}, {"_id": 0})  # Exclude MongoDB's `_id` field
+    if not user:
+        return jsonify({"error": "User not found!"}), 404
+    return jsonify({"message": "User details retrieved successfully!", "user": user}), 200
+
+# Update user profile
+@app.route("/user/<phone>/update", methods=["PUT"])
+def update_user(phone):
+    data = request.json
+    user = users_collection.find_one({"Phone": phone})
+    if not user:
+        return jsonify({"error": "User not found!"}), 404
+
+    # Update fields dynamically
+    update_fields = {key: data.get(key, user.get(key, "Not Mentioned")) for key in ["Profession", "Bio"]}
+    if "Skills" in data:
+        update_fields["Skills"] = list(set(user.get("Skills", []) + data["Skills"]))
+
+    users_collection.update_one({"Phone": phone}, {"$set": update_fields})
+    return jsonify({"message": "User updated successfully!"}), 200
+
+# Log call details
+@app.route("/user/<phone>/log-call", methods=["POST"])
+def log_call(phone):
+    data = request.json
+    user = users_collection.find_one({"Phone": phone})
+    if not user:
+        return jsonify({"error": "User not found!"}), 404
+
+    call_log = {
+        "Call Number": len(user.get("Calls", [])) + 1,
+        "Networking Goal": data.get("Networking Goal", "Not Mentioned"),
+        "Meeting Type": data.get("Meeting Type", "Not Mentioned"),
+        "Proposed Meeting Date": data.get("Proposed Meeting Date", "Not Mentioned"),
+        "Proposed Meeting Time": data.get("Proposed Meeting Time", "Not Mentioned"),
+        "Meeting Requested to": data.get("Meeting Requested to", "Not Mentioned"),
+        "Meeting Status": data.get("Meeting Status", "Not Mentioned"),
+        "Finalized Meeting Date": data.get("Finalized Meeting Date", "Not Mentioned"),
+        "Finalized Meeting Time": data.get("Finalized Meeting Time", "Not Mentioned"),
+        "Meeting Link": data.get("Meeting Link", "Not Mentioned"),
+        "Participants Notified": data.get("Participants Notified", False),
+        "Status": data.get("Status", "Ongoing"),
+        "Call Summary": data.get("Call Summary", "Not Mentioned")
+    }
+
+    users_collection.update_one({"Phone": phone}, {"$push": {"Calls": call_log}})
+    return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 201
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
