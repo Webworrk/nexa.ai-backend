@@ -142,7 +142,10 @@ def start_call():
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
-        "phoneNumber": user_phone  # ✅ Added user phone number
+        "phoneNumber": {  # ✅ Fix: Make phoneNumber an object
+            "number": user_phone,
+            "type": "user"
+        }
     }
 
     headers = {
