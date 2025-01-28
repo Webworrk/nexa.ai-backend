@@ -135,9 +135,8 @@ def handle_call():
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
-    customer_data = data.get("customer", {})  # Fetch nested customer object safely
-    phone_data = customer_data.get("phoneNumber", {})  # Extract phone number correctly
-    user_phone = phone_data.get("twilioPhoneNumber")  # Get the phone number
+    customer_data = data.get("customer", {})  # Get customer object
+    user_phone = customer_data.get("twilioPhoneNumber")  # Extract Twilio number
 
     if not user_phone:
         return jsonify({"error": "Phone number is required!"}), 400
@@ -145,11 +144,7 @@ def start_call():
     payload = {
         "name": "Networking Call with Nexa",
         "assistantId": os.getenv("VAPI_ASSISTANT_ID"),
-        "customer": {  
-            "phoneNumber": {
-                "twilioPhoneNumber": user_phone
-            }
-        }
+        "customer": user_phone  # ✅ Fix: Vapi requires `customer` as a string (not an object)
     }
 
     headers = {
