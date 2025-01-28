@@ -136,13 +136,8 @@ def start_call():
 
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": None,  # Use a predefined assistant if available
-        "messages": [
-            {
-                "role": "assistant",
-                "message": "Hello, I am Nexa, your networking assistant! Let's get started."
-            }
-        ]
+        "assistantId": None,  # Use a predefined assistant ID from Vapi.ai
+        "destination": user_phone
     }
 
     headers = {
