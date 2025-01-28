@@ -134,31 +134,25 @@ def handle_call():
 @app.route("/start-call", methods=["POST"])
 def start_call():
     try:
+        # 1. Log incoming request data
         data = request.json
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
+        print("Incoming request data:", data)
 
-        # Extract phone number - handle both direct phone number and nested customer object
+        # 2. Validate phone number
         phone_number = None
-        if "customer" in data:
-            if isinstance(data["customer"], dict):
-                phone_number = data["customer"].get("phoneNumber")
-            else:
-                return jsonify({"error": "Customer must be an object"}), 400
-        else:
-            phone_number = data.get("phoneNumber")
-
+        if "customer" in data and isinstance(data["customer"], dict):
+            phone_number = data["customer"].get("phoneNumber")
+        
         if not phone_number:
-            return jsonify({"error": "Phone number is required"}), 400
-
-        # Verify API credentials
+            return jsonify({"error": "Valid phone number is required"}), 400
+            
+        # 3. Get and validate VAPI credentials
         vapi_api_key = os.getenv("VAPI_API_KEY")
         vapi_assistant_id = os.getenv("VAPI_ASSISTANT_ID")
         
-        if not vapi_api_key or not vapi_assistant_id:
-            return jsonify({"error": "Missing VAPI credentials"}), 500
-
-        # Prepare the payload for VAPI
+        print("VAPI Assistant ID:", vapi_assistant_id)  # Log assistant ID (don't log API key)
+        
+        # 4. Prepare request
         payload = {
             "name": "Networking Call with Nexa",
             "assistantId": vapi_assistant_id,
@@ -166,39 +160,49 @@ def start_call():
                 "phoneNumber": phone_number
             }
         }
-
+        
+        print("Sending payload to VAPI:", payload)  # Log what we're sending
+        
         headers = {
             "Authorization": f"Bearer {vapi_api_key}",
             "Content-Type": "application/json"
         }
 
-        # Make the API call
-        response = requests.post(
-            "https://api.vapi.ai/call", 
-            json=payload, 
-            headers=headers,
-            timeout=10  # Add timeout
-        )
-
-        # Check response
-        response.raise_for_status()
-        
-        return jsonify({
-            "message": "Call initiated successfully!", 
-            "response": response.json()
-        }), 200
-
-    except requests.exceptions.RequestException as e:
-        # Handle network or API errors
-        return jsonify({
-            "error": "Failed to communicate with VAPI service",
-            "details": str(e)
-        }), 500
+        # 5. Make request with detailed error handling
+        try:
+            response = requests.post(
+                "https://api.vapi.ai/call",
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            print("VAPI Response Status:", response.status_code)
+            print("VAPI Response:", response.text)
+            
+            # Handle different response status codes
+            if response.status_code == 401:
+                return jsonify({"error": "Authentication failed with VAPI"}), 500
+            elif response.status_code == 400:
+                return jsonify({"error": "Invalid request to VAPI", "details": response.text}), 500
+            elif response.status_code != 200:
+                return jsonify({"error": f"VAPI returned status {response.status_code}", "details": response.text}), 500
+            
+            return jsonify({
+                "message": "Call initiated successfully!",
+                "response": response.json()
+            }), 200
+            
+        except requests.exceptions.Timeout:
+            print("Request to VAPI timed out")
+            return jsonify({"error": "Request to VAPI timed out"}), 500
+        except requests.exceptions.RequestException as e:
+            print(f"Request to VAPI failed: {str(e)}")
+            return jsonify({"error": "Failed to communicate with VAPI", "details": str(e)}), 500
+            
     except Exception as e:
-        # Handle any other unexpected errors
-        return jsonify({
-            "error": "An unexpected error occurred",
-            "details": str(e)
-        }), 500
+        print(f"Unexpected error: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
