@@ -1,4 +1,3 @@
-Flask
-pymongo
-openai
-requests
+Flask==2.2.2
+pymongo[srv]==4.3.3
+python-dotenv==1.0.0
