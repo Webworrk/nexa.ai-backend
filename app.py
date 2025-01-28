@@ -135,7 +135,7 @@ def handle_call():
 def start_call():
     data = request.json
     phone_data = data.get("phoneNumber", {})  # Fetch nested object safely
-    user_phone = phone_data.get("number")  # Extract the number
+    user_phone = data.get("phoneNumber") or data.get("phoneNumber", {}).get("twilioPhoneNumber")
 
     if not user_phone:
         return jsonify({"error": "Phone number is required!"}), 400
