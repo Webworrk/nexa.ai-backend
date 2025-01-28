@@ -99,11 +99,16 @@ def log_call(phone):
     users_collection.update_one({"Phone": phone}, {"$push": {"Calls": call_log}})
     return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 201
 
-# Vapi.ai Configuration
-VAPI_API_KEY = os.getenv("VAPI_API_KEY")
-VAPI_ENDPOINT = "https://api.vapi.ai/v1/call"
 
-# Handle Incoming Calls from Vapi.ai
+# ✅ Vapi.ai Configuration
+VAPI_API_KEY = os.getenv("VAPI_API_KEY", "not_set")
+VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "not_set")
+
+# ✅ Check if API keys are loaded correctly
+if VAPI_API_KEY == "not_set" or VAPI_ASSISTANT_ID == "not_set":
+    raise ValueError("❌ Missing API Key or Assistant ID in environment variables!")
+
+# ✅ Handle Incoming Calls from Vapi.ai
 @app.route("/handle-call", methods=["POST"])
 def handle_call():
     data = request.json
@@ -126,6 +131,7 @@ def handle_call():
 
     return jsonify({"message": "Call processed successfully!", "call_number": call_log["Call Number"]}), 200
 
+# ✅ Initiate Call via Vapi.ai
 @app.route("/start-call", methods=["POST"])
 def start_call():
     data = request.json
@@ -136,7 +142,7 @@ def start_call():
 
     payload = {
         "name": "Networking Call with Nexa",
-        "assistantId": VAPI_ASSISTANT_ID  # Using your new assistantId
+        "assistantId": VAPI_ASSISTANT_ID  # ✅ This should now work correctly
     }
 
     headers = {
