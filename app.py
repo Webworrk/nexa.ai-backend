@@ -218,10 +218,11 @@ def start_call():
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
 
-# ✅ **Temporary Change**: Store all calls without `customer_id`
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     data = request.json
+    print("📥 Incoming Webhook Data:", data)  # 🔍 Log request for debugging
+    
     call_id = data.get("id")
     transcript = data.get("messages", [])
     call_status = data.get("status", "Completed")
@@ -233,10 +234,11 @@ def vapi_webhook():
         "Timestamp": datetime.now().isoformat()
     }
 
-    # ✅ **Store all calls, even if they don't have a linked user**
+    # ✅ Store all calls, even if they don’t have a linked user
     call_logs_collection.insert_one(call_log)
 
     return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
+
 
 # ✅ **Temporary Change**: Fetch all call logs without `customer_id`
 @app.route("/get-user-calls", methods=["GET"])
