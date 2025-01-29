@@ -5,7 +5,10 @@ from dotenv import load_dotenv
 import os
 from datetime import datetime
 import openai
+import json
 
+# Initialize OpenAI client
+client = openai.OpenAI()
 
 # Load environment variables
 load_dotenv()
@@ -272,11 +275,11 @@ def vapi_webhook():
     return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
 
 
-# ✅ **Function to Extract User Information Using OpenAI**
 def extract_user_info_from_transcript(transcript):
     """
-    Uses OpenAI API to extract user details from a call transcript.
+    Uses OpenAI API to extract structured user details from a call transcript.
     """
+
     prompt = f"""
     Extract structured information from this call transcript:
 
@@ -308,41 +311,57 @@ def extract_user_info_from_transcript(transcript):
     """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "Extract structured information from the following call transcript."},
-                      {"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "Extract structured information from the following call transcript."},
+                {"role": "user", "content": prompt}
+            ],
             temperature=0.7
         )
-        extracted_data = response["choices"][0]["message"]["content"]
-        extracted_data_json = json.loads(extracted_data)  # Convert OpenAI response to JSON
+
+        extracted_data = response.choices[0].message.content  # Extract OpenAI response
+        extracted_data_json = json.loads(extracted_data)  # Convert to JSON
+        
         return extracted_data_json  # Return structured data
+
+    except json.JSONDecodeError:
+        print("❌ JSON Parsing Error: OpenAI response is not in valid JSON format.")
+        return default_response()
+    
     except Exception as e:
         print(f"❌ OpenAI Extraction Error: {e}")
-        return {
-            "Name": "Not Mentioned",
-            "Email": "Not Mentioned",
-            "Phone": "Not Mentioned",
-            "Profession": "Not Mentioned",
-            "Bio": "Not Mentioned",
-            "Signup Status": "Incomplete",
-            "Nexa ID": None,
-            "Latest Call": {
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Yet Decided",
-                "Proposed Meeting Time": "Not Yet Decided",
-                "Meeting Requested to": "Not Mentioned",
-                "Meeting Status": "Pending",
-                "Finalized Meeting Date": "Not Yet Agreed",
-                "Finalized Meeting Time": "Not Yet Agreed",
-                "Meeting Link": "Not Yet Created",
-                "Status": "Ongoing",
-                "Call Summary": "No summary available."
-            }
+        return default_response()
+
+
+def default_response():
+    """ Returns a default structured response when extraction fails. """
+    return {
+        "Name": "Not Mentioned",
+        "Email": "Not Mentioned",
+        "Phone": "Not Mentioned",
+        "Profession": "Not Mentioned",
+        "Bio": "Not Mentioned",
+        "Signup Status": "Incomplete",
+        "Nexa ID": None,
+        "Latest Call": {
+            "Networking Goal": "Not Mentioned",
+            "Meeting Type": "Not Mentioned",
+            "Proposed Meeting Date": "Not Yet Decided",
+            "Proposed Meeting Time": "Not Yet Decided",
+            "Meeting Requested to": "Not Mentioned",
+            "Meeting Status": "Pending",
+            "Finalized Meeting Date": "Not Yet Agreed",
+            "Finalized Meeting Time": "Not Yet Agreed",
+            "Meeting Link": "Not Yet Created",
+            "Status": "Ongoing",
+            "Call Summary": "No summary available."
         }
+    }
 
 
 # ✅ **Start Flask App**
 if __name__ == "__main__":
+    from flask import Flask
+    app = Flask(__name__)
     app.run(host="0.0.0.0", port=5000)
