@@ -22,6 +22,11 @@ db = client["Nexa"]
 call_logs_collection = db["CallLogs"]
 users_collection = db["Users"]
 
+try:
+    print("✅ MongoDB Connected: ", client.server_info())  # Debug connection
+except Exception as e:
+    print("❌ MongoDB Connection Failed:", e)
+
 # ✅ OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
@@ -29,23 +34,77 @@ if not openai.api_key:
 
 # ✅ Vapi.ai Configuration
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
+VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
+
+if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
+    print("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Welcome to Nexa Backend! AI-powered networking assistant is live."}), 200
+    return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
 
-# ✅ Webhook for Processing Vapi.ai Calls
+# ✅ Fetch Old Call Logs & Store in MongoDB
+@app.route("/sync-vapi-calllogs", methods=["GET"])
+def sync_vapi_calllogs():
+    try:
+        headers = {
+            "Authorization": f"Bearer {VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # ✅ Fetch Call Logs from Vapi.ai
+        response = requests.get("https://api.vapi.ai/calls", headers=headers, timeout=30)
+
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to fetch call logs", "details": response.text}), response.status_code
+
+        call_logs = response.json().get("calls", [])
+
+        if not call_logs:
+            return jsonify({"message": "No new call logs found!"}), 200
+
+        # ✅ Store Each Call Log in MongoDB
+        for log in call_logs:
+            user_phone = log.get("customer", {}).get("number", "Unknown")
+            transcript = log.get("messages", [{}])[-1].get("artifact", {}).get("transcript", "Not Available")
+
+            # ✅ Skip duplicate logs
+            if call_logs_collection.find_one({"Phone": user_phone, "Transcript": transcript}):
+                continue
+
+            call_entry = {
+                "Phone": user_phone,
+                "Call Summary": "Pending AI Processing...",
+                "Transcript": transcript,
+                "Timestamp": datetime.utcnow().isoformat()
+            }
+            call_logs_collection.insert_one(call_entry)
+
+            # ✅ Process & Update User Data from Transcript
+            process_transcript(user_phone, transcript)
+
+        return jsonify({"message": f"✅ Synced {len(call_logs)} call logs successfully!"}), 200
+
+    except Exception as e:
+        return jsonify({"error": "Syncing call logs failed", "details": str(e)}), 500
+
+
+# ✅ Webhook to Handle New Calls from Vapi.ai
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     try:
         data = request.json
+        print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
+
+        # ✅ Extract User Phone Number
         user_phone = data.get("customer", {}).get("number")
-        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "")
+        if not user_phone:
+            return jsonify({"error": "Phone number not provided"}), 400
 
-        if not user_phone or not transcript:
-            return jsonify({"error": "Missing phone number or transcript"}), 400
+        # ✅ Extract Call Transcript
+        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
 
-        # ✅ Step 1: Store Transcript in CallLogs
+        # ✅ Step 1: Store Raw Transcript in CallLogs
         call_log_entry = {
             "Phone": user_phone,
             "Call Summary": "Processing...",
@@ -54,51 +113,72 @@ def vapi_webhook():
         }
         call_logs_collection.insert_one(call_log_entry)
 
-        # ✅ Step 2: Process Transcript with OpenAI
-        structured_data = process_transcript(transcript)
+        # ✅ Step 2: Process Transcript & Update User Data
+        process_transcript(user_phone, transcript)
 
-        # ✅ Step 3: Update Users Collection
+        return jsonify({"message": "Call log stored and processed successfully!"}), 200
+
+    except Exception as e:
+        print(f"❌ Webhook Error: {str(e)}")
+        return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
+
+
+# ✅ Process Transcript Using OpenAI & Update User Collection
+def process_transcript(user_phone, transcript):
+    try:
+        summary = extract_user_info_from_transcript(transcript)
+
+        # ✅ Find or Create User in MongoDB
         user = users_collection.find_one({"Phone": user_phone})
         if not user:
+            print(f"👤 Creating new user for phone: {user_phone}")
             user = {
-                "Name": structured_data.get("Name", "Not Mentioned"),
-                "Email": "Not Mentioned",
-                "Phone": user_phone,
-                "Profession": structured_data.get("Profession", "Not Mentioned"),
-                "Bio": structured_data.get("Bio", "Not Mentioned"),
-                "Signup Status": "Completed",
                 "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
+                "Name": summary.get("Name", "Not Mentioned"),
+                "Email": summary.get("Email", "Not Mentioned"),
+                "Phone": user_phone,
+                "Profession": summary.get("Profession", "Not Mentioned"),
+                "Bio": summary.get("Bio", "Not Mentioned"),
+                "Signup Status": "Incomplete",
                 "Calls": []
             }
             users_collection.insert_one(user)
 
-        # ✅ Add Call Details to User Profile
-        user_call = {
+        # ✅ Prepare Call Log Entry
+        user_call_log = {
             "Call Number": len(user.get("Calls", [])) + 1,
-            "Networking Goal": structured_data.get("Networking Goal", "Not Mentioned"),
-            "Meeting Type": structured_data.get("Meeting Type", "Not Mentioned"),
-            "Proposed Meeting Date": structured_data.get("Proposed Meeting Date", None),
-            "Proposed Meeting Time": structured_data.get("Proposed Meeting Time", None),
-            "Meeting Requested to": structured_data.get("Meeting Requested to", None) if structured_data.get("Meeting Type") != "Speed Dating" else None,
+            "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
+            "Meeting Type": summary.get("Meeting Type", "Not Mentioned"),
+            "Proposed Meeting Date": summary.get("Proposed Meeting Date", "Not Mentioned"),
+            "Proposed Meeting Time": summary.get("Proposed Meeting Time", "Not Mentioned"),
             "Meeting Status": "Pending Confirmation",
             "Finalized Meeting Date": None,
             "Finalized Meeting Time": None,
             "Meeting Link": None,
             "Participants Notified": False,
             "Status": "Ongoing",
-            "Call Summary": structured_data.get("Call Summary", "No summary available."),
-            "Transcript": transcript
+            "Call Summary": summary.get("Call Summary", "No summary available.")
         }
 
-        users_collection.update_one({"Phone": user_phone}, {"$push": {"Calls": user_call}})
+        # ✅ Store Call Log in Users Collection
+        users_collection.update_one(
+            {"Phone": user_phone},
+            {"$push": {"Calls": user_call_log}}
+        )
 
-        return jsonify({"message": "Call processed and stored successfully!"}), 200
+        # ✅ Update CallLogs with Summary
+        call_logs_collection.update_one(
+            {"Phone": user_phone, "Transcript": transcript},
+            {"$set": {"Call Summary": summary.get("Call Summary", "No summary available.")}}
+        )
+
+        print(f"✅ Call processed & User Updated: {user_phone}")
 
     except Exception as e:
-        return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
+        print(f"❌ Error Processing Transcript: {e}")
 
 
-# ✅ Function to Extract Data from Transcript using OpenAI
+# ✅ Extract Information from Transcript Using OpenAI
 def extract_user_info_from_transcript(transcript):
     prompt = f"""
     Extract structured information from this call transcript:
@@ -116,15 +196,11 @@ def extract_user_info_from_transcript(transcript):
             temperature=0.5
         )
         response_text = response["choices"][0]["message"]["content"]
-
-        try:
-            extracted_data = json.loads(response_text)
-        except json.JSONDecodeError:
-            return {}
-
+        extracted_data = json.loads(response_text)
         return extracted_data
 
     except Exception as e:
+        print(f"❌ OpenAI Extraction Error: {e}")
         return {}
 
 if __name__ == "__main__":
