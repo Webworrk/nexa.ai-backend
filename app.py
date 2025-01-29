@@ -49,10 +49,19 @@ def hash_transcript(transcript):
     return hashlib.sha256(transcript.encode()).hexdigest()
 
 def extract_user_info_from_transcript(transcript):
-    """
-    Extract relevant user information from call transcript using OpenAI's API with JSON mode.
-    Returns a dictionary containing structured information about the call.
-    """
+    """Extract user information from transcript using OpenAI."""
+    default_response = {
+        "Name": "Not Mentioned",
+        "Email": "Not Mentioned",
+        "Profession": "Not Mentioned",
+        "Bio": "Not Mentioned",
+        "Networking Goal": "Not Mentioned",
+        "Meeting Type": "Not Mentioned",
+        "Proposed Meeting Date": "Not Mentioned",
+        "Proposed Meeting Time": "Not Mentioned",
+        "Call Summary": "Not Mentioned"
+    }
+    
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
@@ -70,40 +79,12 @@ def extract_user_info_from_transcript(transcript):
             temperature=0.3
         )
         
-        # Parse the response
-        return json.loads(response.choices[0].message.content)
-        
+        extracted_info = json.loads(response.choices[0].message.content)
+        return {**default_response, **extracted_info}
+    
     except Exception as e:
         print(f"Error processing transcript: {str(e)}")
-        return {
-            "Name": "Not Mentioned",
-            "Email": "Not Mentioned",
-            "Profession": "Not Mentioned",
-            "Bio": "Not Mentioned",
-            "Networking Goal": "Not Mentioned",
-            "Meeting Type": "Not Mentioned",
-            "Proposed Meeting Date": "Not Mentioned",
-            "Proposed Meeting Time": "Not Mentioned",
-            "Call Summary": "Not Mentioned"
-        }
-
-        except Exception as parsing_error:
-            print(f"Error parsing OpenAI response: {parsing_error}")
-            return {
-                "Name": "Not Mentioned",
-                "Email": "Not Mentioned",
-                "Profession": "Not Mentioned",
-                "Bio": "Not Mentioned",
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Mentioned",
-                "Proposed Meeting Time": "Not Mentioned",
-                "Call Summary": "Error processing transcript"
-            }
-
-    except Exception as e:
-        print(f"Error in OpenAI API call: {str(e)}")
-        raise Exception(f"Failed to process transcript: {str(e)}")
+        return default_response
 
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
@@ -113,7 +94,6 @@ def sync_vapi_calllogs():
             "Content-Type": "application/json"
         }
 
-        # Fetch Call Logs from Vapi.ai
         response = requests.get("https://api.vapi.ai/call", headers=headers, timeout=30)
 
         if response.status_code != 200:
@@ -124,14 +104,12 @@ def sync_vapi_calllogs():
         if not call_logs:
             return jsonify({"message": "No new call logs found!"}), 200
 
-        # Store Each Call Log in MongoDB
         for log in call_logs:
             user_phone = log.get("customer", {}).get("number", "Unknown")
             transcript = log.get("messages", [{}])[-1].get("artifact", {}).get("transcript", "Not Available")
             transcript_hash = hash_transcript(transcript)
             timestamp = datetime.utcnow().isoformat()
 
-            # Check for duplicate logs
             existing_log = call_logs_collection.find_one({
                 "Phone": user_phone,
                 "Transcript Hash": transcript_hash
@@ -150,7 +128,6 @@ def sync_vapi_calllogs():
             }
             call_logs_collection.insert_one(call_entry)
 
-            # Process & Update User Data from Transcript
             process_transcript(user_phone, transcript)
 
         return jsonify({"message": f"✅ Synced {len(call_logs)} call logs successfully!"}), 200
@@ -161,7 +138,6 @@ def sync_vapi_calllogs():
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     try:
-        # Receive JSON data
         data = request.get_json()
         if not data:
             print("❌ No JSON received!")
@@ -169,18 +145,15 @@ def vapi_webhook():
         
         print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
         
-        # Extract User Phone Number
         user_phone = data.get("customer", {}).get("number")
         if not user_phone:
             print("❌ Phone number missing!")
             return jsonify({"error": "Phone number not provided"}), 400
 
-        # Extract Call Transcript
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
         transcript_hash = hash_transcript(transcript)
         timestamp = datetime.utcnow().isoformat()
 
-        # Check for duplicate logs
         existing_log = call_logs_collection.find_one({
             "Phone": user_phone,
             "Transcript Hash": transcript_hash
@@ -190,7 +163,6 @@ def vapi_webhook():
             print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
             return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
 
-        # Store New Call Log
         call_log_entry = {
             "Phone": user_phone,
             "Call Summary": "Processing...",
@@ -201,7 +173,6 @@ def vapi_webhook():
         call_logs_collection.insert_one(call_log_entry)
         print("✅ Call log successfully stored.")
 
-        # Process Transcript & Update User Data
         process_transcript(user_phone, transcript)
 
         return jsonify({"message": "✅ Call log stored and processed successfully!"}), 200
@@ -214,7 +185,6 @@ def process_transcript(user_phone, transcript):
     try:
         summary = extract_user_info_from_transcript(transcript)
 
-        # Find or Create User in MongoDB
         user = users_collection.find_one({"Phone": user_phone})
         if not user:
             print(f"👤 Creating new user for phone: {user_phone}")
@@ -230,7 +200,6 @@ def process_transcript(user_phone, transcript):
             }
             users_collection.insert_one(user)
 
-        # Prepare Call Log Entry
         user_call_log = {
             "Call Number": len(user.get("Calls", [])) + 1,
             "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
@@ -246,13 +215,11 @@ def process_transcript(user_phone, transcript):
             "Call Summary": summary.get("Call Summary", "No summary available.")
         }
 
-        # Store Call Log in Users Collection
         users_collection.update_one(
             {"Phone": user_phone},
             {"$push": {"Calls": user_call_log}}
         )
 
-        # Update CallLogs with Summary
         call_logs_collection.update_one(
             {"Phone": user_phone, "Transcript Hash": hash_transcript(transcript)},
             {"$set": {"Call Summary": summary.get("Call Summary", "No summary available.")}}
