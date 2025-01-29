@@ -238,25 +238,54 @@ def vapi_webhook():
         data = request.json
         print("📥 Incoming Webhook Data:", data)
 
-        # ✅ Store Call Logs in `CallLogs` Collection
-        call_logs_collection.insert_one(data)
+        # ✅ Extract user phone number
+        user_phone = data.get("customer", {}).get("phoneNumber", "Not Mentioned")
+        if user_phone == "Not Mentioned":
+            return jsonify({"error": "Phone number not provided"}), 400
 
-        # ✅ Extract User Information Using OpenAI
-        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "")
+        # ✅ Extract Call Transcript and Summarize
+        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
+        summary = extract_user_info_from_transcript(transcript)
 
-        if transcript:
-            structured_data = extract_user_info_from_transcript(transcript)
-            users_collection.update_one(
-                {"Phone": structured_data["Phone"]},  # Match existing user by phone
-                {"$set": structured_data},  # Update user info
-                upsert=True  # Insert if doesn't exist
-            )
+        # ✅ Find User in Database
+        user = users_collection.find_one({"Phone": user_phone})
+        if not user:
+            return jsonify({"error": "User not found"}), 404
 
-        return jsonify({"message": "Data processed successfully"}), 200
+        # ✅ Prepare Call Log Entry in Correct Format
+        call_log = {
+            "Call Number": len(user.get("Calls", [])) + 1,
+            "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
+            "Meeting Type": summary.get("Meeting Type", "Not Mentioned"),
+            "Proposed Meeting Date": summary.get("Proposed Meeting Date", "Not Mentioned"),
+            "Proposed Meeting Time": summary.get("Proposed Meeting Time", "Not Mentioned"),
+            "Meeting Requested to": {
+                "Name": summary.get("Requested To Name", "Not Mentioned"),
+                "Email": summary.get("Requested To Email", "Not Mentioned"),
+                "Phone": summary.get("Requested To Phone", "Not Mentioned"),
+                "Profession": summary.get("Requested To Profession", "Not Mentioned"),
+                "Bio": summary.get("Requested To Bio", "Not Mentioned")
+            },
+            "Meeting Status": "Pending Confirmation",
+            "Finalized Meeting Date": None,
+            "Finalized Meeting Time": None,
+            "Meeting Link": None,
+            "Participants Notified": False,
+            "Status": "Ongoing",
+            "Call Summary": summary.get("Call Summary", "No summary available.")
+        }
+
+        # ✅ Update User Collection with New Call Log
+        users_collection.update_one(
+            {"Phone": user_phone},
+            {"$push": {"Calls": call_log}}
+        )
+
+        return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 200
 
     except Exception as e:
         print(f"❌ Error processing webhook: {e}")
-        return jsonify({"error": "Webhook processing failed"}), 500
+        return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
 
 
 def extract_user_info_from_transcript(transcript):
@@ -270,62 +299,62 @@ def extract_user_info_from_transcript(transcript):
 
     Return the data in JSON format, following this structure:
     {{
-      "Name": "<User's Name or 'Not Mentioned'>",
-      "Email": "<User's Email or 'Not Mentioned'>",
       "Phone": "<User's Phone Number or 'Not Mentioned'>",
-      "Profession": "<User's Profession or 'Not Mentioned'>",
-      "Bio": "<A brief summary of the user's experience>",
-      "Signup Status": "Incomplete",
-      "Nexa ID": null,
-      "Latest Call": {{
-        "Networking Goal": "<What the user wants to achieve>",
-        "Meeting Type": "<Speed Dating | One-on-One | Not Mentioned>",
-        "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
-        "Proposed Meeting Time": "<Formatted Time or 'Not Yet Decided'>",
-        "Meeting Requested to": "<Who they want to connect with>",
-        "Meeting Status": "<Pending | Confirmed | Cancelled>",
-        "Finalized Meeting Date": "<Date or 'Not Yet Agreed'>",
-        "Finalized Meeting Time": "<Time or 'Not Yet Agreed'>",
-        "Meeting Link": "Not Yet Created",
-        "Status": "Ongoing",
-        "Call Summary": "<Short Summary of the Call>"
-      }}
+      "Networking Goal": "<What the user wants to achieve>",
+      "Meeting Type": "<Speed Dating | One-on-One | Not Mentioned>",
+      "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
+      "Proposed Meeting Time": "<Formatted Time or 'Not Yet Decided'>",
+      "Requested To Name": "<Who they want to connect with>",
+      "Requested To Email": "<Email of the requested contact>",
+      "Requested To Phone": "<Phone of the requested contact>",
+      "Requested To Profession": "<Profession of the requested contact>",
+      "Requested To Bio": "<Bio of the requested contact>",
+      "Call Summary": "<Short Summary of the Call>"
     }}
     """
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[{"role": "system", "content": "Extract structured information from the following call transcript."},
+            messages=[{"role": "system", "content": "Extract structured networking details from the transcript."},
                       {"role": "user", "content": prompt}],
-            temperature=0.7
+            temperature=0.5
         )
         extracted_data = json.loads(response["choices"][0]["message"]["content"])
-        return extracted_data
+
+        # Ensure all fields are present
+        structured_data = {
+            "Phone": extracted_data.get("Phone", "Not Mentioned"),
+            "Networking Goal": extracted_data.get("Networking Goal", "Not Mentioned"),
+            "Meeting Type": extracted_data.get("Meeting Type", "Not Mentioned"),
+            "Proposed Meeting Date": extracted_data.get("Proposed Meeting Date", "Not Yet Decided"),
+            "Proposed Meeting Time": extracted_data.get("Proposed Meeting Time", "Not Yet Decided"),
+            "Requested To Name": extracted_data.get("Requested To Name", "Not Mentioned"),
+            "Requested To Email": extracted_data.get("Requested To Email", "Not Mentioned"),
+            "Requested To Phone": extracted_data.get("Requested To Phone", "Not Mentioned"),
+            "Requested To Profession": extracted_data.get("Requested To Profession", "Not Mentioned"),
+            "Requested To Bio": extracted_data.get("Requested To Bio", "Not Mentioned"),
+            "Call Summary": extracted_data.get("Call Summary", "No summary available.")
+        }
+
+        return structured_data
+
     except Exception as e:
         print(f"❌ OpenAI Extraction Error: {e}")
         return {
-            "Name": "Not Mentioned",
-            "Email": "Not Mentioned",
             "Phone": "Not Mentioned",
-            "Profession": "Not Mentioned",
-            "Bio": "Not Mentioned",
-            "Signup Status": "Incomplete",
-            "Nexa ID": None,
-            "Latest Call": {
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Yet Decided",
-                "Proposed Meeting Time": "Not Yet Decided",
-                "Meeting Requested to": "Not Mentioned",
-                "Meeting Status": "Pending",
-                "Finalized Meeting Date": "Not Yet Agreed",
-                "Finalized Meeting Time": "Not Yet Agreed",
-                "Meeting Link": "Not Yet Created",
-                "Status": "Ongoing",
-                "Call Summary": "No summary available."
-            }
+            "Networking Goal": "Not Mentioned",
+            "Meeting Type": "Not Mentioned",
+            "Proposed Meeting Date": "Not Yet Decided",
+            "Proposed Meeting Time": "Not Yet Decided",
+            "Requested To Name": "Not Mentioned",
+            "Requested To Email": "Not Mentioned",
+            "Requested To Phone": "Not Mentioned",
+            "Requested To Profession": "Not Mentioned",
+            "Requested To Bio": "Not Mentioned",
+            "Call Summary": "No summary available."
         }
+
 
 
 if __name__ == "__main__":
