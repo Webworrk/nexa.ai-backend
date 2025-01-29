@@ -41,6 +41,11 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
     print("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
 
+# Function to retrieve a user by phone number
+def get_user_by_phone(phone):
+    """Retrieve user details from MongoDB based on phone number."""
+    return users_collection.find_one({"Phone": phone})
+
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
@@ -202,48 +207,116 @@ def vapi_webhook():
         if not data:
             print("❌ No JSON received!")
             return jsonify({"error": "No JSON received"}), 400
-        
+
         print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
-        
+
         user_phone = data.get("message", {}).get("customer", {}).get("number")
+        event_type = data.get("message", {}).get("type")
+
         if not user_phone:
             print("❌ Phone number missing!")
             return jsonify({"error": "Phone number not provided"}), 400
 
-        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
-        if not transcript or transcript == "Not Mentioned":
-            print("❌ No transcript in webhook data!")
-            return jsonify({"error": "No transcript provided"}), 400
+        # Check if the user exists in MongoDB
+        existing_user = users_collection.find_one({"Phone": user_phone})
 
-        transcript_hash = hash_transcript(transcript)
-        timestamp = datetime.utcnow().isoformat()
+        # Personalize Nexa's response if the user has called before
+        if event_type == "status-update" and data["message"].get("status") == "in-progress":
+            if existing_user:
+                # Extract name and last networking goal
+                name = existing_user.get("Name", "there")
+                last_call = existing_user.get("Calls", [{}])[-1]  # Get latest call
+                last_goal = last_call.get("Networking Goal", "expanding your network")
 
-        existing_log = call_logs_collection.find_one({
-            "Phone": user_phone,
-            "Transcript Hash": transcript_hash
-        })
+                greeting = f"Hey {name}, how are you? I see you're still looking for {last_goal}. Let’s make it happen!"
+            else:
+                greeting = "Hey there! I'm Nexa, your friendly Networking Manager. Let's get you connected with the right people!"
 
-        if existing_log:
-            print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
-            return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
+            return jsonify({"message": greeting}), 200
 
-        call_log_entry = {
-            "Phone": user_phone,
-            "Call Summary": "Processing...",
-            "Transcript": transcript,
-            "Transcript Hash": transcript_hash,
-            "Timestamp": timestamp,
-            "Processed": False
-        }
-        
-        result = call_logs_collection.insert_one(call_log_entry)
-        if result.inserted_id:
+        # Handle end-of-call event
+        if event_type == "end-of-call-report":
+            transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
+            if not transcript or transcript == "Not Mentioned":
+                print("❌ No transcript in webhook data!")
+                return jsonify({"error": "No transcript provided"}), 400
+
+            transcript_hash = hash_transcript(transcript)
+            timestamp = datetime.utcnow().isoformat()
+
+            # Prevent duplicate logs
+            existing_log = call_logs_collection.find_one({
+                "Phone": user_phone,
+                "Transcript Hash": transcript_hash
+            })
+
+            if existing_log:
+                print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
+                return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
+
+            # Store call log
+            call_log_entry = {
+                "Phone": user_phone,
+                "Call Summary": "Processing...",
+                "Transcript": transcript,
+                "Transcript Hash": transcript_hash,
+                "Timestamp": timestamp,
+                "Processed": False
+            }
+            call_logs_collection.insert_one(call_log_entry)
+
             print("✅ Call log successfully stored.")
+            
+            # Process transcript and update user call history
             process_transcript(user_phone, transcript)
+
+            # If user exists, update call history
+            if existing_user:
+                new_call = {
+                    "Call Number": len(existing_user["Calls"]) + 1,
+                    "Networking Goal": "Extracted from transcript",  # Placeholder, will be extracted
+                    "Meeting Type": "Not Mentioned",
+                    "Proposed Meeting Date": "Not Mentioned",
+                    "Proposed Meeting Time": "Not Mentioned",
+                    "Meeting Status": "Pending Confirmation",
+                    "Finalized Meeting Date": None,
+                    "Finalized Meeting Time": None,
+                    "Meeting Link": None,
+                    "Participants Notified": False,
+                    "Status": "Completed",
+                    "Call Summary": "To be processed"
+                }
+                users_collection.update_one({"Phone": user_phone}, {"$push": {"Calls": new_call}})
+            else:
+                # Create new user entry
+                new_user = {
+                    "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
+                    "Name": "Not Mentioned",
+                    "Email": "Not Mentioned",
+                    "Phone": user_phone,
+                    "Profession": "Not Mentioned",
+                    "Bio": "Not Mentioned",
+                    "Signup Status": "Incomplete",
+                    "Calls": [
+                        {
+                            "Call Number": 1,
+                            "Networking Goal": "Extracted from transcript",
+                            "Meeting Type": "Not Mentioned",
+                            "Proposed Meeting Date": "Not Mentioned",
+                            "Proposed Meeting Time": "Not Mentioned",
+                            "Meeting Status": "Pending Confirmation",
+                            "Finalized Meeting Date": None,
+                            "Finalized Meeting Time": None,
+                            "Meeting Link": None,
+                            "Participants Notified": False,
+                            "Status": "Completed",
+                            "Call Summary": "To be processed"
+                        }
+                    ]
+                }
+                users_collection.insert_one(new_user)
+
             return jsonify({"message": "✅ Call log stored and processed successfully!"}), 200
-        else:
-            print("❌ Failed to store call log!")
-            return jsonify({"error": "Failed to store call log"}), 500
 
     except Exception as e:
         print(f"❌ Webhook Error: {str(e)}")
