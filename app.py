@@ -219,6 +219,40 @@ def start_call():
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
 
+@app.route("/vapi-webhook", methods=["POST"])
+def vapi_webhook():
+    data = request.json  # Get the call event data from Vapi
+    
+    call_id = data.get("id")  # Unique Call ID from Vapi
+    customer_id = data.get("customerId")  # The user in your system
+    status = data.get("status")  # Call status (started, completed, etc.)
+    transcript = data.get("transcript", "No transcript available")  # Call transcript
+    duration = data.get("duration", 0)  # Call duration in seconds
+
+    # Find the user in MongoDB
+    user = users_collection.find_one({"Vapi_CustomerID": customer_id})
+    
+    if not user:
+        return jsonify({"error": "User not found in MongoDB"}), 400
+
+    # Create a call log entry
+    call_log = {
+        "call_id": call_id,
+        "status": status,
+        "duration": duration,
+        "transcript": transcript,
+        "timestamp": datetime.utcnow()
+    }
+
+    # Store the call log in MongoDB
+    users_collection.update_one(
+        {"Vapi_CustomerID": customer_id},
+        {"$push": {"Calls": call_log}}
+    )
+
+    return jsonify({"message": "Call data stored successfully!"}), 200
+
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
