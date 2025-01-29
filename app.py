@@ -218,6 +218,8 @@ def start_call():
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
 
+
+
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     data = request.json
@@ -232,13 +234,16 @@ def vapi_webhook():
     if not transcript_messages:
         transcript_text = "No transcript available."
     else:
-        # Extract all messages from the list
-        transcript_text = "\n".join([msg.get("message", "") for msg in transcript_messages])
+        # ✅ Store only user responses, ignoring system prompts
+        transcript_text = "\n".join([
+            msg.get("message", "") for msg in transcript_messages
+            if msg.get("role") == "user"  # Only take user responses
+        ])
 
     # ✅ Store Call Log in MongoDB
     call_log = {
         "Call ID": call_id,
-        "Transcript": transcript_text,  # 🔥 Now stores only the extracted text
+        "Transcript": transcript_text,  # 🔥 Now stores only the user's responses
         "Status": call_status,
         "Timestamp": datetime.now().isoformat()
     }
