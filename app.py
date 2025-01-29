@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -138,17 +139,18 @@ def start_call():
         data = request.json
         print("Incoming request data:", data)
 
-        # 2. Validate phone number
-        phone_number = None
+        # 2. Validate customer phone number
+        customer_phone = None
         if "customer" in data and isinstance(data["customer"], dict):
-            phone_number = data["customer"].get("phoneNumber")
+            customer_phone = data["customer"].get("phoneNumber")
         
-        if not phone_number:
-            return jsonify({"error": "Valid phone number is required"}), 400
+        if not customer_phone:
+            return jsonify({"error": "Valid customer phone number is required"}), 400
             
         # 3. Get and validate VAPI credentials
         vapi_api_key = os.getenv("VAPI_API_KEY")
         vapi_assistant_id = os.getenv("VAPI_ASSISTANT_ID")
+        twilio_phone_number = "+18454796197"  # Your Twilio phone number
         
         print("VAPI Assistant ID:", vapi_assistant_id)
         
@@ -156,9 +158,12 @@ def start_call():
         payload = {
             "name": "Networking Call with Nexa",
             "assistantId": vapi_assistant_id,
-            "type": "outboundPhoneCall",  # Specify call type
+            "type": "outboundPhoneCall",
+            "phoneNumber": {  # Add the Twilio phone number configuration
+                "twilioPhoneNumber": twilio_phone_number
+            },
             "customer": {
-                "number": phone_number,
+                "number": customer_phone,
                 "numberE164CheckEnabled": True,
                 "name": "Nexa Customer"
             }
@@ -181,6 +186,22 @@ def start_call():
         
         print("VAPI Response Status:", response.status_code)
         print("VAPI Response:", response.text)
+
+        # 6. Log call to MongoDB
+        if response.status_code == 200:
+            # Extract user's phone number
+            user = users_collection.find_one({"Phone": customer_phone})
+            if user:
+                call_log = {
+                    "Call Number": len(user.get("Calls", [])) + 1,
+                    "Status": "Initiated",
+                    "Call ID": response.json().get("id", "Not Available"),
+                    "Timestamp": datetime.now().isoformat()
+                }
+                users_collection.update_one(
+                    {"Phone": customer_phone}, 
+                    {"$push": {"Calls": call_log}}
+                )
         
         if response.status_code == 401:
             return jsonify({"error": "Authentication failed with VAPI"}), 500
