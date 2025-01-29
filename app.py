@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import openai
 import json
+import hashlib  # ✅ Added for transcript hashing
 
 app = Flask(__name__)
 
@@ -43,6 +44,11 @@ if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
 
+# ✅ Function to Generate Hash for Transcripts
+def hash_transcript(transcript):
+    """Generate a unique hash for the transcript to prevent duplicates."""
+    return hashlib.sha256(transcript.encode()).hexdigest()
+
 # ✅ Fetch Old Call Logs & Store in MongoDB
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
@@ -58,7 +64,7 @@ def sync_vapi_calllogs():
         if response.status_code != 200:
             return jsonify({"error": "Failed to fetch call logs", "details": response.text}), response.status_code
 
-        call_logs = response.json()  # ✅ FIXED: API returns a list directly
+        call_logs = response.json()  # ✅ API returns a list directly
 
         if not call_logs:
             return jsonify({"message": "No new call logs found!"}), 200
@@ -67,16 +73,25 @@ def sync_vapi_calllogs():
         for log in call_logs:
             user_phone = log.get("customer", {}).get("number", "Unknown")
             transcript = log.get("messages", [{}])[-1].get("artifact", {}).get("transcript", "Not Available")
+            transcript_hash = hash_transcript(transcript)
+            timestamp = datetime.utcnow().isoformat()
 
-            # ✅ Skip duplicate logs
-            if call_logs_collection.find_one({"Phone": user_phone, "Transcript": transcript}):
+            # ✅ Check for duplicate logs (using transcript hash & timestamp)
+            existing_log = call_logs_collection.find_one({
+                "Phone": user_phone,
+                "Transcript Hash": transcript_hash
+            })
+
+            if existing_log:
+                print(f"⚠️ Skipping duplicate log for {user_phone}")
                 continue
 
             call_entry = {
                 "Phone": user_phone,
                 "Call Summary": "Pending AI Processing...",
                 "Transcript": transcript,
-                "Timestamp": datetime.utcnow().isoformat()
+                "Transcript Hash": transcript_hash,  # ✅ Store transcript hash
+                "Timestamp": timestamp
             }
             call_logs_collection.insert_one(call_entry)
 
@@ -103,20 +118,33 @@ def vapi_webhook():
 
         # ✅ Extract Call Transcript
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
+        transcript_hash = hash_transcript(transcript)
+        timestamp = datetime.utcnow().isoformat()
 
-        # ✅ Step 1: Store Raw Transcript in CallLogs
+        # ✅ Check for duplicate logs
+        existing_log = call_logs_collection.find_one({
+            "Phone": user_phone,
+            "Transcript Hash": transcript_hash
+        })
+
+        if existing_log:
+            print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
+            return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
+
+        # ✅ Store New Call Log
         call_log_entry = {
             "Phone": user_phone,
             "Call Summary": "Processing...",
             "Transcript": transcript,
-            "Timestamp": datetime.utcnow().isoformat()
+            "Transcript Hash": transcript_hash,
+            "Timestamp": timestamp
         }
         call_logs_collection.insert_one(call_log_entry)
 
-        # ✅ Step 2: Process Transcript & Update User Data
+        # ✅ Process Transcript & Update User Data
         process_transcript(user_phone, transcript)
 
-        return jsonify({"message": "Call log stored and processed successfully!"}), 200
+        return jsonify({"message": "✅ Call log stored and processed successfully!"}), 200
 
     except Exception as e:
         print(f"❌ Webhook Error: {str(e)}")
@@ -168,7 +196,7 @@ def process_transcript(user_phone, transcript):
 
         # ✅ Update CallLogs with Summary
         call_logs_collection.update_one(
-            {"Phone": user_phone, "Transcript": transcript},
+            {"Phone": user_phone, "Transcript Hash": hash_transcript(transcript)},
             {"$set": {"Call Summary": summary.get("Call Summary", "No summary available.")}}
         )
 
@@ -177,31 +205,6 @@ def process_transcript(user_phone, transcript):
     except Exception as e:
         print(f"❌ Error Processing Transcript: {e}")
 
-
-# ✅ Extract Information from Transcript Using OpenAI
-def extract_user_info_from_transcript(transcript):
-    prompt = f"""
-    Extract structured information from this call transcript:
-
-    {transcript}
-
-    Return the data in JSON format.
-    """
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": "Extract structured networking details from the transcript."},
-                      {"role": "user", "content": prompt}],
-            temperature=0.5
-        )
-        response_text = response["choices"][0]["message"]["content"]
-        extracted_data = json.loads(response_text)
-        return extracted_data
-
-    except Exception as e:
-        print(f"❌ OpenAI Extraction Error: {e}")
-        return {}
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
