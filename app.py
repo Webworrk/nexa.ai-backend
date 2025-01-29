@@ -72,53 +72,6 @@ def extract_user_info_from_transcript(transcript):
 
     print("✅ Processed transcript manually: ", extracted_info)
     return extracted_info
-            
-            # Initialize default values
-            extracted_info = {
-                "Name": "Not Mentioned",
-                "Email": "Not Mentioned",
-                "Profession": "Not Mentioned",
-                "Bio": "Not Mentioned",
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Mentioned",
-                "Proposed Meeting Time": "Not Mentioned",
-                "Call Summary": "Not Mentioned"
-            }
-
-            # Parse the response text line by line
-            current_field = None
-            for line in extraction_text.split('\n'):
-                line = line.strip()
-                if line:
-                    # Check for field markers
-                    for field in extracted_info.keys():
-                        if line.lower().startswith(field.lower() + ':'):
-                            current_field = field
-                            value = line[len(field) + 1:].strip()
-                            if value and value.lower() != "not mentioned":
-                                extracted_info[field] = value
-                            break
-
-            return extracted_info
-
-        except Exception as parsing_error:
-            print(f"Error parsing OpenAI response: {parsing_error}")
-            return {
-                "Name": "Not Mentioned",
-                "Email": "Not Mentioned",
-                "Profession": "Not Mentioned",
-                "Bio": "Not Mentioned",
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Mentioned",
-                "Proposed Meeting Time": "Not Mentioned",
-                "Call Summary": "Error processing transcript"
-            }
-
-    except Exception as e:
-        print(f"Error in OpenAI API call: {str(e)}")
-        raise Exception(f"Failed to process transcript: {str(e)}")
 
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
