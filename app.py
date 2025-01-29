@@ -58,7 +58,7 @@ def sync_vapi_calllogs():
         if response.status_code != 200:
             return jsonify({"error": "Failed to fetch call logs", "details": response.text}), response.status_code
 
-        call_logs = response.json().get("calls", [])
+        call_logs = response.json()  # ✅ FIXED: API returns a list directly
 
         if not call_logs:
             return jsonify({"message": "No new call logs found!"}), 200
