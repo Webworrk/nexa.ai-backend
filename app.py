@@ -4,6 +4,8 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import openai
+
 
 # Load environment variables
 load_dotenv()
@@ -220,6 +222,7 @@ def start_call():
 
 
 
+# ✅ **Handle Incoming Calls from Vapi.ai**
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     data = request.json
@@ -228,9 +231,9 @@ def vapi_webhook():
     call_id = data.get("call", {}).get("id", "Unknown Call ID")
     call_status = data.get("message", {}).get("status", "Unknown Status")
 
-    # Extract transcript messages properly
+    # ✅ Extract transcript messages properly
     transcript_messages = data.get("message", {}).get("artifact", {}).get("messages", [])
-    
+
     if not transcript_messages:
         transcript_text = "No transcript available."
     else:
@@ -240,20 +243,106 @@ def vapi_webhook():
             if msg.get("role") == "user"  # Only take user responses
         ])
 
-    # ✅ Store Call Log in MongoDB
-    call_log = {
-        "Call ID": call_id,
-        "Transcript": transcript_text,  # 🔥 Now stores only the user's responses
-        "Status": call_status,
-        "Timestamp": datetime.now().isoformat()
-    }
+    # ✅ 1. Use OpenAI to Extract User Details from the Call Transcript
+    user_info = extract_user_info_from_transcript(transcript_text)
 
-    call_logs_collection.insert_one(call_log)
+    # ✅ 2. Check if user already exists (Find by Phone)
+    user = users_collection.find_one({"Phone": user_info["Phone"]})
 
-    print("✅ Stored Call Log in MongoDB:", call_log)  # Debugging print
+    if user:
+        # ✅ 3. Update User Information & Append Call History
+        call_log = {
+            "Call Number": len(user.get("Calls", [])) + 1,
+            **user_info["Latest Call"]
+        }
+        users_collection.update_one(
+            {"Phone": user_info["Phone"]},
+            {"$set": {
+                "Profession": user_info["Profession"],
+                "Bio": user_info["Bio"]
+            }, "$push": {"Calls": call_log}}
+        )
+    else:
+        # ✅ 4. Create New User Entry
+        user_info["Calls"] = [user_info["Latest Call"]]  # Wrap call in list
+        del user_info["Latest Call"]  # Remove temp key
+        users_collection.insert_one(user_info)
+
+    print("✅ Stored Call Log in MongoDB:", user_info)  # Debugging print
     return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
 
 
+# ✅ **Function to Extract User Information Using OpenAI**
+def extract_user_info_from_transcript(transcript):
+    """
+    Uses OpenAI API to extract user details from a call transcript.
+    """
+    prompt = f"""
+    Extract structured information from this call transcript:
 
+    {transcript}
+
+    Return the data in **JSON format**, following this structure:
+    {{
+      "Name": "<User's Name or 'Not Mentioned'>",
+      "Email": "Not Mentioned",
+      "Phone": "Not Mentioned",
+      "Profession": "<User's Profession or 'Not Mentioned'>",
+      "Bio": "<A brief summary of the user's experience>",
+      "Signup Status": "Incomplete",
+      "Nexa ID": null,
+      "Latest Call": {{
+        "Networking Goal": "<What the user wants to achieve>",
+        "Meeting Type": "<Speed Dating | One-on-One>",
+        "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
+        "Proposed Meeting Time": "<Formatted Time or 'Not Yet Decided'>",
+        "Meeting Requested to": "<Who they want to connect with>",
+        "Meeting Status": "<Pending | Confirmed | Cancelled>",
+        "Finalized Meeting Date": "<Date or 'Not Yet Agreed'>",
+        "Finalized Meeting Time": "<Time or 'Not Yet Agreed'>",
+        "Meeting Link": "Not Yet Created",
+        "Status": "Ongoing",
+        "Call Summary": "<Short Summary of the Call>"
+      }}
+    }}
+    """
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "Extract structured information from the following call transcript."},
+                      {"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        extracted_data = response["choices"][0]["message"]["content"]
+        extracted_data_json = json.loads(extracted_data)  # Convert OpenAI response to JSON
+        return extracted_data_json  # Return structured data
+    except Exception as e:
+        print(f"❌ OpenAI Extraction Error: {e}")
+        return {
+            "Name": "Not Mentioned",
+            "Email": "Not Mentioned",
+            "Phone": "Not Mentioned",
+            "Profession": "Not Mentioned",
+            "Bio": "Not Mentioned",
+            "Signup Status": "Incomplete",
+            "Nexa ID": None,
+            "Latest Call": {
+                "Networking Goal": "Not Mentioned",
+                "Meeting Type": "Not Mentioned",
+                "Proposed Meeting Date": "Not Yet Decided",
+                "Proposed Meeting Time": "Not Yet Decided",
+                "Meeting Requested to": "Not Mentioned",
+                "Meeting Status": "Pending",
+                "Finalized Meeting Date": "Not Yet Agreed",
+                "Finalized Meeting Time": "Not Yet Agreed",
+                "Meeting Link": "Not Yet Created",
+                "Status": "Ongoing",
+                "Call Summary": "No summary available."
+            }
+        }
+
+
+# ✅ **Start Flask App**
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
