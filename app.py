@@ -1,6 +1,6 @@
 import requests
 from flask import Flask, request, jsonify
-from pymongo import MongoClient
+from pymongo import MongoClient  # ✅ Correct import
 from dotenv import load_dotenv
 import os
 from datetime import datetime
@@ -10,18 +10,20 @@ import json
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
-app = Flask(__name__)
+# ✅ Connect to MongoDB
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    raise ValueError("❌ MONGO_URI environment variable is missing!")
 
-# Connect to MongoDB
-MONGO_URI = os.getenv("MONGO_URI")  # Ensure this is set in your Render environment variables
-client = pymongo.MongoClient(MONGO_URI)
-db = client["Nexa"]  # Your database name
+client = MongoClient(MONGO_URI)  # ✅ Fix pymongo import
+db = client["Nexa"]
 call_logs_collection = db["CallLogs"]
 users_collection = db["Users"]
 
-# OpenAI API Key
+# ✅ OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
 
 @app.route("/", methods=["GET"])
 def home():
