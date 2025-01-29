@@ -187,7 +187,7 @@ def vapi_webhook():
         
         print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
         
-        user_phone = data.get("customer", {}).get("number")
+        user_phone = data.get("message", {}).get("customer", {}).get("number")
         if not user_phone:
             print("❌ Phone number missing!")
             return jsonify({"error": "Phone number not provided"}), 400
