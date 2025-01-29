@@ -7,11 +7,9 @@ from datetime import datetime
 import openai
 import json
 
-# Initialize OpenAI client
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv()  # Load variables from .env file
 
-# Load environment variables
-load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Initialize Flask app
 app = Flask(__name__)
