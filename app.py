@@ -220,7 +220,7 @@ def vapi_webhook():
         # Check if the user exists in MongoDB
         existing_user = users_collection.find_one({"Phone": user_phone})
 
-        # Personalize Nexa's response if the user has called before
+        # 🎯 If call is in-progress, personalize the greeting for returning users
         if event_type == "status-update" and data["message"].get("status") == "in-progress":
             if existing_user:
                 # Extract name and last networking goal
@@ -232,9 +232,9 @@ def vapi_webhook():
             else:
                 greeting = "Hey there! I'm Nexa, your friendly Networking Manager. Let's get you connected with the right people!"
 
-            return jsonify({"message": greeting}), 200
+            return jsonify({"message": greeting}), 200  # ✅ FIX: Return immediately
 
-        # Handle end-of-call event
+        # 🎯 If the call ended, process the transcript
         if event_type == "end-of-call-report":
             transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
             if not transcript or transcript == "Not Mentioned":
@@ -267,50 +267,54 @@ def vapi_webhook():
 
             print("✅ Call log successfully stored.")
             
-            # Process transcript and update user call history
-            process_transcript(user_phone, transcript)
+            # Process transcript and extract useful information
+            processed_data = process_transcript(user_phone, transcript)
 
-            # If user exists, update call history
+            # 🎯 If user exists, update their call history
             if existing_user:
                 new_call = {
                     "Call Number": len(existing_user["Calls"]) + 1,
-                    "Networking Goal": "Extracted from transcript",  # Placeholder, will be extracted
-                    "Meeting Type": "Not Mentioned",
-                    "Proposed Meeting Date": "Not Mentioned",
-                    "Proposed Meeting Time": "Not Mentioned",
+                    "Networking Goal": processed_data.get("Networking Goal", "Not Mentioned"),
+                    "Meeting Type": processed_data.get("Meeting Type", "Not Mentioned"),
+                    "Proposed Meeting Date": processed_data.get("Proposed Meeting Date", "Not Mentioned"),
+                    "Proposed Meeting Time": processed_data.get("Proposed Meeting Time", "Not Mentioned"),
                     "Meeting Status": "Pending Confirmation",
                     "Finalized Meeting Date": None,
                     "Finalized Meeting Time": None,
                     "Meeting Link": None,
                     "Participants Notified": False,
                     "Status": "Completed",
-                    "Call Summary": "To be processed"
+                    "Call Summary": processed_data.get("Call Summary", "Not Mentioned")
                 }
                 users_collection.update_one({"Phone": user_phone}, {"$push": {"Calls": new_call}})
             else:
-                # Create new user entry
+                # 🎯 Create new user entry
                 new_user = {
                     "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
-                    "Name": "Not Mentioned",
-                    "Email": "Not Mentioned",
+                    "Name": processed_data.get("Name", "Not Mentioned"),
+                    "Email": processed_data.get("Email", "Not Mentioned"),
                     "Phone": user_phone,
-                    "Profession": "Not Mentioned",
-                    "Bio": "Not Mentioned",
+                    "Profession": processed_data.get("Profession", "Not Mentioned"),
+                    "Bio": f"{processed_data['Bio_Components'].get('Company', 'Not Mentioned')}, "
+                           f"{processed_data['Bio_Components'].get('Experience', 'Not Mentioned')} years of experience, "
+                           f"Industry: {processed_data['Bio_Components'].get('Industry', 'Not Mentioned')}, "
+                           f"{processed_data['Bio_Components'].get('Background', 'Not Mentioned')}, "
+                           f"Achievements: {processed_data['Bio_Components'].get('Achievements', 'Not Mentioned')}.",
                     "Signup Status": "Incomplete",
                     "Calls": [
                         {
                             "Call Number": 1,
-                            "Networking Goal": "Extracted from transcript",
-                            "Meeting Type": "Not Mentioned",
-                            "Proposed Meeting Date": "Not Mentioned",
-                            "Proposed Meeting Time": "Not Mentioned",
+                            "Networking Goal": processed_data.get("Networking Goal", "Not Mentioned"),
+                            "Meeting Type": processed_data.get("Meeting Type", "Not Mentioned"),
+                            "Proposed Meeting Date": processed_data.get("Proposed Meeting Date", "Not Mentioned"),
+                            "Proposed Meeting Time": processed_data.get("Proposed Meeting Time", "Not Mentioned"),
                             "Meeting Status": "Pending Confirmation",
                             "Finalized Meeting Date": None,
                             "Finalized Meeting Time": None,
                             "Meeting Link": None,
                             "Participants Notified": False,
                             "Status": "Completed",
-                            "Call Summary": "To be processed"
+                            "Call Summary": processed_data.get("Call Summary", "Not Mentioned")
                         }
                     ]
                 }
@@ -322,6 +326,7 @@ def vapi_webhook():
         print(f"❌ Webhook Error: {str(e)}")
         print(f"Stack trace: {traceback.format_exc()}")
         return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
+
 
 def process_transcript(user_phone, transcript):
     """Process transcript and update both Users and CallLogs collections."""
