@@ -50,6 +50,38 @@ def get_user_by_phone(phone):
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
 
+@app.route("/vapi-user-context/<phone>", methods=["GET"])
+def get_vapi_context(phone):
+    """Endpoint for Vapi to fetch user context before starting a call"""
+    try:
+        # Find user in database
+        user = users_collection.find_one({"Phone": phone})
+        
+        if not user:
+            return jsonify({
+                "is_returning": False,
+                "greeting": "Hey there! I'm Nexa, your friendly Networking Manager. Let's get you connected with the right people!"
+            }), 200
+            
+        # Get latest call info if available
+        calls = user.get("Calls", [])
+        last_goal = calls[-1].get("Networking Goal", "expanding your network") if calls else None
+        
+        context = {
+            "is_returning": True,
+            "name": user.get("Name", "there"),
+            "last_goal": last_goal,
+            "greeting": f"Welcome back {user.get('Name', 'there')}! "
+                       f"{'I remember you were interested in ' + last_goal + '. ' if last_goal else ''}"
+                       f"How can I help you with your networking goals today?"
+        }
+        
+        return jsonify(context), 200
+        
+    except Exception as e:
+        print(f"❌ Error fetching user context: {str(e)}")
+        return jsonify({"error": "Failed to fetch user context"}), 500
+
 def hash_transcript(transcript):
     """Generate a unique hash for the transcript to prevent duplicates."""
     return hashlib.sha256(transcript.encode()).hexdigest()
@@ -139,6 +171,49 @@ def extract_user_info_from_transcript(transcript):
         print(f"🔍 Stack trace: {traceback.format_exc()}")
         return default_response
 
+def update_vapi_assistant(phone):
+    """Update Vapi assistant with user context"""
+    try:
+        user = users_collection.find_one({"Phone": phone})
+        if not user:
+            return
+            
+        headers = {
+            "Authorization": f"Bearer {VAPI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        # Get latest call info
+        calls = user.get("Calls", [])
+        last_goal = calls[-1].get("Networking Goal", "expanding your network") if calls else None
+        
+        # Update Vapi assistant configuration
+        payload = {
+            "assistant_id": VAPI_ASSISTANT_ID,
+            "configuration": {
+                "user_context": {
+                    "name": user.get("Name", "there"),
+                    "is_returning": True,
+                    "last_goal": last_goal
+                }
+            }
+        }
+        
+        response = requests.patch(
+            f"https://api.vapi.ai/assistant/{VAPI_ASSISTANT_ID}/configuration",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ Failed to update Vapi assistant: {response.text}")
+            return False
+            
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error updating Vapi assistant: {str(e)}")
+        return False
 
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
@@ -220,21 +295,28 @@ def vapi_webhook():
         # Check if the user exists in MongoDB
         existing_user = users_collection.find_one({"Phone": user_phone})
 
-        # 🎯 If call is in-progress, personalize the greeting for returning users
+        # 🎯 If call is in-progress, update Vapi with user context
         if event_type == "status-update" and data["message"].get("status") == "in-progress":
+            # Update Vapi assistant with user context
+            update_vapi_assistant(user_phone)
+            
+            # Return personalized greeting based on user context
             if existing_user:
-                # Extract name and last networking goal
                 name = existing_user.get("Name", "there")
-                last_call = existing_user.get("Calls", [{}])[-1]  # Get latest call
-                last_goal = last_call.get("Networking Goal", "expanding your network")
-
-                greeting = f"Hey {name}, how are you? I see you're still looking for {last_goal}. Let’s make it happen!"
+                calls = existing_user.get("Calls", [])
+                
+                if calls:
+                    last_call = calls[-1]
+                    last_goal = last_call.get("Networking Goal", "expanding your network")
+                    greeting = f"Welcome back {name}! I remember you were interested in {last_goal}. How can I help you make progress on that today?"
+                else:
+                    greeting = f"Welcome back {name}! How can I help you with your networking goals today?"
             else:
                 greeting = "Hey there! I'm Nexa, your friendly Networking Manager. Let's get you connected with the right people!"
 
-            return jsonify({"message": greeting}), 200  # ✅ FIX: Return immediately
+            return jsonify({"message": greeting}), 200
 
-        # 🎯 If the call ended, process the transcript
+        # 🎯 If call ended, process the transcript
         if event_type == "end-of-call-report":
             transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
             if not transcript or transcript == "Not Mentioned":
@@ -254,79 +336,15 @@ def vapi_webhook():
                 print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
                 return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
 
-            # Store call log
-            call_log_entry = {
-                "Phone": user_phone,
-                "Call Summary": "Processing...",
-                "Transcript": transcript,
-                "Transcript Hash": transcript_hash,
-                "Timestamp": timestamp,
-                "Processed": False
-            }
-            call_logs_collection.insert_one(call_log_entry)
+            # Store call log and process transcript
+            process_transcript(user_phone, transcript)
 
-            print("✅ Call log successfully stored.")
-            
-            # Process transcript and extract useful information
-            processed_data = process_transcript(user_phone, transcript)
-
-            # 🎯 If user exists, update their call history
-            if existing_user:
-                new_call = {
-                    "Call Number": len(existing_user["Calls"]) + 1,
-                    "Networking Goal": processed_data.get("Networking Goal", "Not Mentioned"),
-                    "Meeting Type": processed_data.get("Meeting Type", "Not Mentioned"),
-                    "Proposed Meeting Date": processed_data.get("Proposed Meeting Date", "Not Mentioned"),
-                    "Proposed Meeting Time": processed_data.get("Proposed Meeting Time", "Not Mentioned"),
-                    "Meeting Status": "Pending Confirmation",
-                    "Finalized Meeting Date": None,
-                    "Finalized Meeting Time": None,
-                    "Meeting Link": None,
-                    "Participants Notified": False,
-                    "Status": "Completed",
-                    "Call Summary": processed_data.get("Call Summary", "Not Mentioned")
-                }
-                users_collection.update_one({"Phone": user_phone}, {"$push": {"Calls": new_call}})
-            else:
-                # 🎯 Create new user entry
-                new_user = {
-                    "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
-                    "Name": processed_data.get("Name", "Not Mentioned"),
-                    "Email": processed_data.get("Email", "Not Mentioned"),
-                    "Phone": user_phone,
-                    "Profession": processed_data.get("Profession", "Not Mentioned"),
-                    "Bio": f"{processed_data['Bio_Components'].get('Company', 'Not Mentioned')}, "
-                           f"{processed_data['Bio_Components'].get('Experience', 'Not Mentioned')} years of experience, "
-                           f"Industry: {processed_data['Bio_Components'].get('Industry', 'Not Mentioned')}, "
-                           f"{processed_data['Bio_Components'].get('Background', 'Not Mentioned')}, "
-                           f"Achievements: {processed_data['Bio_Components'].get('Achievements', 'Not Mentioned')}.",
-                    "Signup Status": "Incomplete",
-                    "Calls": [
-                        {
-                            "Call Number": 1,
-                            "Networking Goal": processed_data.get("Networking Goal", "Not Mentioned"),
-                            "Meeting Type": processed_data.get("Meeting Type", "Not Mentioned"),
-                            "Proposed Meeting Date": processed_data.get("Proposed Meeting Date", "Not Mentioned"),
-                            "Proposed Meeting Time": processed_data.get("Proposed Meeting Time", "Not Mentioned"),
-                            "Meeting Status": "Pending Confirmation",
-                            "Finalized Meeting Date": None,
-                            "Finalized Meeting Time": None,
-                            "Meeting Link": None,
-                            "Participants Notified": False,
-                            "Status": "Completed",
-                            "Call Summary": processed_data.get("Call Summary", "Not Mentioned")
-                        }
-                    ]
-                }
-                users_collection.insert_one(new_user)
-
-            return jsonify({"message": "✅ Call log stored and processed successfully!"}), 200
+            return jsonify({"message": "✅ Call processed successfully!"}), 200
 
     except Exception as e:
         print(f"❌ Webhook Error: {str(e)}")
         print(f"Stack trace: {traceback.format_exc()}")
         return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
-
 
 def process_transcript(user_phone, transcript):
     """Process transcript and update both Users and CallLogs collections."""
@@ -402,6 +420,7 @@ def process_transcript(user_phone, transcript):
                 )
 
         # Prepare call log entry with rich information
+        transcript_hash = hash_transcript(transcript)
         user_call_log = {
             "Call Number": len(user.get("Calls", [])) + 1,
             "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
@@ -418,15 +437,15 @@ def process_transcript(user_phone, transcript):
             "Conversation": messages
         }
 
-        # Update Users collection
+        # Update Users collection with the new call
         users_collection.update_one(
             {"Phone": user_phone},
             {"$push": {"Calls": user_call_log}}
         )
 
-        # Update CallLogs collection
+        # Update CallLogs collection with processed information
         call_logs_collection.update_one(
-            {"Phone": user_phone, "Transcript Hash": hash_transcript(transcript)},
+            {"Phone": user_phone, "Transcript Hash": transcript_hash},
             {"$set": {
                 "Call Summary": summary.get("Call Summary", "No summary available."),
                 "Messages": messages,
