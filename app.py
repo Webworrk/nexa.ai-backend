@@ -1,5 +1,5 @@
-import requests
 from flask import Flask, request, jsonify
+import requests
 from pymongo import MongoClient  # ✅ Correct import
 from dotenv import load_dotenv
 import os
@@ -7,7 +7,10 @@ from datetime import datetime
 import openai
 import json
 
-# Load environment variables
+# ✅ Initialize Flask app at the top
+app = Flask(__name__)
+
+# ✅ Load environment variables
 load_dotenv()
 
 # ✅ Connect to MongoDB
@@ -25,12 +28,17 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
 
+# ✅ Vapi.ai Configuration
+VAPI_API_KEY = os.getenv("VAPI_API_KEY", None)
+VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", None)
+
+if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
+    print("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
+
+# ✅ Define Routes
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
-
-# Flask App Initialization (WRONG: Must be at the top!)
-app = Flask(__name__)
 
 # Register a new user
 @app.route("/register", methods=["POST"])
@@ -111,13 +119,6 @@ def log_call(phone):
     return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 201
 
 
-# ✅ Vapi.ai Configuration
-VAPI_API_KEY = os.getenv("VAPI_API_KEY", "not_set")
-VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", "not_set")
-
-# ✅ Check if API keys are loaded correctly
-if VAPI_API_KEY == "not_set" or VAPI_ASSISTANT_ID == "not_set":
-    raise ValueError("❌ Missing API Key or Assistant ID in environment variables!")
 
 # ✅ Handle Incoming Calls from Vapi.ai
 @app.route("/handle-call", methods=["POST"])
@@ -327,6 +328,5 @@ def extract_user_info_from_transcript(transcript):
         }
 
 
-# ✅ Start Flask App
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ != "__main__":
+    gunicorn_app = app  # ✅ Exposes Flask app to Gunicorn
