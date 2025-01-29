@@ -53,86 +53,39 @@ def extract_user_info_from_transcript(transcript):
     Extract relevant user information from call transcript using OpenAI's API with JSON mode.
     Returns a dictionary containing structured information about the call.
     """
-    default_info = {
-        "Name": "Not Mentioned",
-        "Email": "Not Mentioned",
-        "Profession": "Not Mentioned",
-        "Bio": "Not Mentioned",
-        "Networking Goal": "Not Mentioned",
-        "Meeting Type": "Not Mentioned",
-        "Proposed Meeting Date": "Not Mentioned",
-        "Proposed Meeting Time": "Not Mentioned",
-        "Call Summary": "Not Mentioned"
-    }
-    
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
-            response_format={ "type": "json_object" },
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts structured information from call transcripts. Extract all available information and use 'Not Mentioned' for missing fields."},
-                {"role": "user", "content": f"Extract information from this transcript in JSON format:\n\n{transcript}"}
-            ],
-            functions=[{
-                "name": "extract_info",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "Name": {
-                            "type": "string",
-                            "description": "Name of the person"
-                        },
-                        "Email": {
-                            "type": "string",
-                            "description": "Email address"
-                        },
-                        "Profession": {
-                            "type": "string",
-                            "description": "Person's profession or role"
-                        },
-                        "Bio": {
-                            "type": "string",
-                            "description": "Brief summary about the person"
-                        },
-                        "Networking Goal": {
-                            "type": "string",
-                            "description": "What they want to achieve through networking"
-                        },
-                        "Meeting Type": {
-                            "type": "string",
-                            "description": "Type of meeting (virtual/in-person)"
-                        },
-                        "Proposed Meeting Date": {
-                            "type": "string",
-                            "description": "Proposed date for meeting"
-                        },
-                        "Proposed Meeting Time": {
-                            "type": "string",
-                            "description": "Proposed time for meeting"
-                        },
-                        "Call Summary": {
-                            "type": "string",
-                            "description": "Brief overview of the conversation"
-                        }
-                    },
-                    "required": ["Name", "Email", "Profession", "Bio", "Networking Goal", 
-                               "Meeting Type", "Proposed Meeting Date", "Proposed Meeting Time", 
-                               "Call Summary"]
+                {
+                    "role": "system",
+                    "content": "Extract information from the transcript and return it in a consistent JSON format. Use 'Not Mentioned' for missing fields."
+                },
+                {
+                    "role": "user",
+                    "content": transcript
                 }
-            }],
+            ],
+            response_format={"type": "json_object"},
             temperature=0.3
         )
-
-        try:
-            extracted_info = json.loads(response.choices[0].message.content)
-            return {**default_info, **extracted_info}  # Merge with defaults
-        except (json.JSONDecodeError, AttributeError, IndexError) as e:
-            print(f"Error parsing OpenAI response: {str(e)}")
-            return default_info
-
+        
+        # Parse the response
+        return json.loads(response.choices[0].message.content)
+        
     except Exception as e:
-        print(f"Error in OpenAI API call: {str(e)}")
-        return default_info
+        print(f"Error processing transcript: {str(e)}")
+        return {
+            "Name": "Not Mentioned",
+            "Email": "Not Mentioned",
+            "Profession": "Not Mentioned",
+            "Bio": "Not Mentioned",
+            "Networking Goal": "Not Mentioned",
+            "Meeting Type": "Not Mentioned",
+            "Proposed Meeting Date": "Not Mentioned",
+            "Proposed Meeting Time": "Not Mentioned",
+            "Call Summary": "Not Mentioned"
+        }
 
         except Exception as parsing_error:
             print(f"Error parsing OpenAI response: {parsing_error}")
