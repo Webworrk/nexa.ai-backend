@@ -104,16 +104,21 @@ def sync_vapi_calllogs():
         return jsonify({"error": "Syncing call logs failed", "details": str(e)}), 500
 
 
-# ✅ Webhook to Handle New Calls from Vapi.ai
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     try:
-        data = request.json
-        print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
-
+        # ✅ Receive JSON data
+        data = request.get_json()
+        if not data:
+            print("❌ No JSON received!")
+            return jsonify({"error": "No JSON received"}), 400
+        
+        print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))  # Debugging
+        
         # ✅ Extract User Phone Number
         user_phone = data.get("customer", {}).get("number")
         if not user_phone:
+            print("❌ Phone number missing!")
             return jsonify({"error": "Phone number not provided"}), 400
 
         # ✅ Extract Call Transcript
@@ -140,6 +145,7 @@ def vapi_webhook():
             "Timestamp": timestamp
         }
         call_logs_collection.insert_one(call_log_entry)
+        print("✅ Call log successfully stored.")
 
         # ✅ Process Transcript & Update User Data
         process_transcript(user_phone, transcript)
@@ -149,6 +155,7 @@ def vapi_webhook():
     except Exception as e:
         print(f"❌ Webhook Error: {str(e)}")
         return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
+
 
 
 # ✅ Process Transcript Using OpenAI & Update User Collection
