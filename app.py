@@ -53,6 +53,18 @@ def extract_user_info_from_transcript(transcript):
     Extract relevant user information from call transcript using OpenAI's API with JSON mode.
     Returns a dictionary containing structured information about the call.
     """
+    default_info = {
+        "Name": "Not Mentioned",
+        "Email": "Not Mentioned",
+        "Profession": "Not Mentioned",
+        "Bio": "Not Mentioned",
+        "Networking Goal": "Not Mentioned",
+        "Meeting Type": "Not Mentioned",
+        "Proposed Meeting Date": "Not Mentioned",
+        "Proposed Meeting Time": "Not Mentioned",
+        "Call Summary": "Not Mentioned"
+    }
+    
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
@@ -111,9 +123,16 @@ def extract_user_info_from_transcript(transcript):
             temperature=0.3
         )
 
-        # Extract the JSON response
-        extracted_info = json.loads(response.choices[0].message.content)
-        return extracted_info
+        try:
+            extracted_info = json.loads(response.choices[0].message.content)
+            return {**default_info, **extracted_info}  # Merge with defaults
+        except (json.JSONDecodeError, AttributeError, IndexError) as e:
+            print(f"Error parsing OpenAI response: {str(e)}")
+            return default_info
+
+    except Exception as e:
+        print(f"Error in OpenAI API call: {str(e)}")
+        return default_info
 
         except Exception as parsing_error:
             print(f"Error parsing OpenAI response: {parsing_error}")
