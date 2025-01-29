@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 import requests
-from pymongo import MongoClient  # ✅ Correct import
+from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 import openai
 import json
 
-# ✅ Initialize Flask app at the top
 app = Flask(__name__)
 
 # ✅ Load environment variables
@@ -18,10 +17,15 @@ MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("❌ MONGO_URI environment variable is missing!")
 
-client = MongoClient(MONGO_URI)  # ✅ Fix pymongo import
+client = MongoClient(MONGO_URI)
 db = client["Nexa"]
 call_logs_collection = db["CallLogs"]
 users_collection = db["Users"]
+
+try:
+    print("✅ MongoDB Connected: ", client.server_info())  # Debug connection
+except Exception as e:
+    print("❌ MongoDB Connection Failed:", e)
 
 # ✅ OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -29,17 +33,15 @@ if not openai.api_key:
     raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
 
 # ✅ Vapi.ai Configuration
-VAPI_API_KEY = os.getenv("VAPI_API_KEY", None)
-VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID", None)
+VAPI_API_KEY = os.getenv("VAPI_API_KEY")
+VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 
 if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
     print("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
 
-# ✅ Define Routes
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
-
 # Register a new user
 @app.route("/register", methods=["POST"])
 def register_user():
@@ -236,21 +238,26 @@ def start_call():
 def vapi_webhook():
     try:
         data = request.json
-        print("📥 Incoming Webhook Data:", data)
+        print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
 
-        # ✅ Extract user phone number
-        user_phone = data.get("customer", {}).get("phoneNumber", "Not Mentioned")
-        if user_phone == "Not Mentioned":
+        # ✅ Extract user phone number safely
+        user_phone = data.get("customer", {}).get("number")
+        if not user_phone:
+            print("❌ ERROR: Phone number not provided in webhook data!")
             return jsonify({"error": "Phone number not provided"}), 400
 
-        # ✅ Extract Call Transcript and Summarize
+        # ✅ Extract Call Transcript
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
-        summary = extract_user_info_from_transcript(transcript)
+        print(f"📜 Extracted Transcript: {transcript}")
 
-        # ✅ Find User in Database or Create a New One
+        # ✅ Extract structured details using OpenAI
+        summary = extract_user_info_from_transcript(transcript)
+        print(f"📝 Extracted Summary: {json.dumps(summary, indent=4)}")
+
+        # ✅ Find or Create User in MongoDB
         user = users_collection.find_one({"Phone": user_phone})
         if not user:
-            # Creating a new user profile if not found
+            print(f"👤 Creating a new user for phone: {user_phone}")
             user = {
                 "Name": summary.get("Name", "Not Mentioned"),
                 "Email": summary.get("Email", "Not Mentioned"),
@@ -263,7 +270,7 @@ def vapi_webhook():
             }
             users_collection.insert_one(user)
 
-        # ✅ Prepare Call Log Entry in the Correct Format (for `Users` collection)
+        # ✅ Prepare Call Log Entry
         user_call_log = {
             "Call Number": len(user.get("Calls", [])) + 1,
             "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
@@ -286,57 +293,35 @@ def vapi_webhook():
             "Call Summary": summary.get("Call Summary", "No summary available.")
         }
 
-        # ✅ Update `Users` collection with new call log
-        users_collection.update_one(
+        # ✅ Store Call Log in Users Collection
+        update_result = users_collection.update_one(
             {"Phone": user_phone},
             {"$push": {"Calls": user_call_log}}
         )
+        if update_result.modified_count == 0:
+            print("⚠️ WARNING: No documents updated in `Users` collection!")
 
-        # ✅ Prepare Call Log for `CallLogs` collection
-        call_log_entry = {
+        # ✅ Store Call Log in `CallLogs` Collection
+        call_logs_collection.insert_one({
             "Phone": user_phone,
             "Call Summary": summary.get("Call Summary", "No summary available."),
             "Transcript": transcript
-        }
+        })
 
-        # ✅ Store call log in `CallLogs` collection
-        call_logs_collection.insert_one(call_log_entry)
-
+        print(f"✅ Call Log successfully stored for {user_phone}")
         return jsonify({"message": "Call logged successfully!", "call_number": user_call_log["Call Number"]}), 200
 
     except Exception as e:
-        print(f"❌ Error processing webhook: {e}")
+        print(f"❌ ERROR Processing Webhook: {str(e)}")
         return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
 
-
-
 def extract_user_info_from_transcript(transcript):
-    """
-    Uses OpenAI API to extract structured user details from a call transcript.
-    """
     prompt = f"""
     Extract structured information from this call transcript:
 
     {transcript}
 
-    Return the data in JSON format, following this structure:
-    {{
-      "Name": "<User's Name or 'Not Mentioned'>",
-      "Email": "<User's Email or 'Not Mentioned'>",
-      "Phone": "<User's Phone Number or 'Not Mentioned'>",
-      "Profession": "<User's Profession or 'Not Mentioned'>",
-      "Bio": "<A brief summary of the user's experience>",
-      "Networking Goal": "<What the user wants to achieve>",
-      "Meeting Type": "<Speed Dating | One-on-One | Not Mentioned>",
-      "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
-      "Proposed Meeting Time": "<Formatted Time or 'Not Yet Decided'>",
-      "Requested To Name": "<Who they want to connect with>",
-      "Requested To Email": "<Email of the requested contact>",
-      "Requested To Phone": "<Phone of the requested contact>",
-      "Requested To Profession": "<Profession of the requested contact>",
-      "Requested To Bio": "<Bio of the requested contact>",
-      "Call Summary": "<Short Summary of the Call>"
-    }}
+    Return the data in JSON format.
     """
 
     try:
@@ -346,47 +331,19 @@ def extract_user_info_from_transcript(transcript):
                       {"role": "user", "content": prompt}],
             temperature=0.5
         )
-        extracted_data = json.loads(response["choices"][0]["message"]["content"])
+        response_text = response["choices"][0]["message"]["content"]
 
-        return {
-            "Name": extracted_data.get("Name", "Not Mentioned"),
-            "Email": extracted_data.get("Email", "Not Mentioned"),
-            "Phone": extracted_data.get("Phone", "Not Mentioned"),
-            "Profession": extracted_data.get("Profession", "Not Mentioned"),
-            "Bio": extracted_data.get("Bio", "Not Mentioned"),
-            "Networking Goal": extracted_data.get("Networking Goal", "Not Mentioned"),
-            "Meeting Type": extracted_data.get("Meeting Type", "Not Mentioned"),
-            "Proposed Meeting Date": extracted_data.get("Proposed Meeting Date", "Not Yet Decided"),
-            "Proposed Meeting Time": extracted_data.get("Proposed Meeting Time", "Not Yet Decided"),
-            "Requested To Name": extracted_data.get("Requested To Name", "Not Mentioned"),
-            "Requested To Email": extracted_data.get("Requested To Email", "Not Mentioned"),
-            "Requested To Phone": extracted_data.get("Requested To Phone", "Not Mentioned"),
-            "Requested To Profession": extracted_data.get("Requested To Profession", "Not Mentioned"),
-            "Requested To Bio": extracted_data.get("Requested To Bio", "Not Mentioned"),
-            "Call Summary": extracted_data.get("Call Summary", "No summary available.")
-        }
+        try:
+            extracted_data = json.loads(response_text)
+        except json.JSONDecodeError:
+            print(f"❌ JSON Decode Error: {response_text}")
+            return {}
+
+        return extracted_data
 
     except Exception as e:
         print(f"❌ OpenAI Extraction Error: {e}")
-        return {
-            "Name": "Not Mentioned",
-            "Email": "Not Mentioned",
-            "Phone": "Not Mentioned",
-            "Profession": "Not Mentioned",
-            "Bio": "Not Mentioned",
-            "Networking Goal": "Not Mentioned",
-            "Meeting Type": "Not Mentioned",
-            "Proposed Meeting Date": "Not Yet Decided",
-            "Proposed Meeting Time": "Not Yet Decided",
-            "Requested To Name": "Not Mentioned",
-            "Requested To Email": "Not Mentioned",
-            "Requested To Phone": "Not Mentioned",
-            "Requested To Profession": "Not Mentioned",
-            "Requested To Bio": "Not Mentioned",
-            "Call Summary": "No summary available."
-        }
-
+        return {}
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
