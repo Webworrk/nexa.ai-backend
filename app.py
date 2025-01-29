@@ -226,28 +226,54 @@ def start_call():
 
 
 
-# ✅ Function to Extract Structured Data Using OpenAI
-def extract_user_info_from_transcript(transcript, phone_number):
+@app.route("/vapi-webhook", methods=["POST"])
+def vapi_webhook():
+    try:
+        data = request.json
+        print("📥 Incoming Webhook Data:", data)
+
+        # ✅ Store Call Logs in `CallLogs` Collection
+        call_logs_collection.insert_one(data)
+
+        # ✅ Extract User Information Using OpenAI
+        transcript = data.get("message", {}).get("artifact", {}).get("transcript", "")
+
+        if transcript:
+            structured_data = extract_user_info_from_transcript(transcript)
+            users_collection.update_one(
+                {"Phone": structured_data["Phone"]},  # Match existing user by phone
+                {"$set": structured_data},  # Update user info
+                upsert=True  # Insert if doesn't exist
+            )
+
+        return jsonify({"message": "Data processed successfully"}), 200
+
+    except Exception as e:
+        print(f"❌ Error processing webhook: {e}")
+        return jsonify({"error": "Webhook processing failed"}), 500
+
+
+def extract_user_info_from_transcript(transcript):
     """
     Uses OpenAI API to extract structured user details from a call transcript.
     """
     prompt = f"""
-    Extract structured user information from this call transcript:
+    Extract structured information from this call transcript:
 
     {transcript}
 
-    Return the data in **JSON format**, following this structure:
+    Return the data in JSON format, following this structure:
     {{
       "Name": "<User's Name or 'Not Mentioned'>",
-      "Email": "Not Mentioned",
-      "Phone": "{phone_number}",
+      "Email": "<User's Email or 'Not Mentioned'>",
+      "Phone": "<User's Phone Number or 'Not Mentioned'>",
       "Profession": "<User's Profession or 'Not Mentioned'>",
       "Bio": "<A brief summary of the user's experience>",
       "Signup Status": "Incomplete",
       "Nexa ID": null,
       "Latest Call": {{
         "Networking Goal": "<What the user wants to achieve>",
-        "Meeting Type": "<Speed Dating | One-on-One>",
+        "Meeting Type": "<Speed Dating | One-on-One | Not Mentioned>",
         "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
         "Proposed Meeting Time": "<Formatted Time or 'Not Yet Decided'>",
         "Meeting Requested to": "<Who they want to connect with>",
@@ -269,56 +295,31 @@ def extract_user_info_from_transcript(transcript, phone_number):
             temperature=0.7
         )
         extracted_data = json.loads(response["choices"][0]["message"]["content"])
-
-        # ✅ Store structured user data in Users Collection
-        users_collection.update_one(
-            {"Phone": phone_number},
-            {"$set": extracted_data},
-            upsert=True  # Creates a new entry if user doesn't exist
-        )
-
-        return extracted_data  # Return structured data
+        return extracted_data
     except Exception as e:
         print(f"❌ OpenAI Extraction Error: {e}")
-        return None
-
-
-# ✅ Flask Route to Handle Webhook from Vapi.ai
-@app.route("/vapi-webhook", methods=["POST"])
-def vapi_webhook():
-    try:
-        data = request.json
-        call_data = data.get("message", {})
-
-        # Extract Call Details
-        call_id = call_data.get("call", {}).get("id", "Unknown Call ID")
-        transcript = call_data.get("artifact", {}).get("transcript", "No transcript available.")
-        phone_number = "Not Provided"
-
-        # Try extracting the phone number from the call metadata
-        for message in call_data.get("artifact", {}).get("messages", []):
-            if message.get("role") == "user" and "phone" in message.get("message", "").lower():
-                phone_number = message.get("message").split()[-1]  # Extract phone if mentioned
-
-        # ✅ Store raw call logs in CallLogs Collection
-        call_log_entry = {
-            "Call ID": call_id,
-            "Phone": phone_number,
-            "Transcript": transcript,
-            "Raw Data": call_data  # Store full webhook data for reference
+        return {
+            "Name": "Not Mentioned",
+            "Email": "Not Mentioned",
+            "Phone": "Not Mentioned",
+            "Profession": "Not Mentioned",
+            "Bio": "Not Mentioned",
+            "Signup Status": "Incomplete",
+            "Nexa ID": None,
+            "Latest Call": {
+                "Networking Goal": "Not Mentioned",
+                "Meeting Type": "Not Mentioned",
+                "Proposed Meeting Date": "Not Yet Decided",
+                "Proposed Meeting Time": "Not Yet Decided",
+                "Meeting Requested to": "Not Mentioned",
+                "Meeting Status": "Pending",
+                "Finalized Meeting Date": "Not Yet Agreed",
+                "Finalized Meeting Time": "Not Yet Agreed",
+                "Meeting Link": "Not Yet Created",
+                "Status": "Ongoing",
+                "Call Summary": "No summary available."
+            }
         }
-        call_logs_collection.insert_one(call_log_entry)
-
-        print(f"✅ Stored Call Log in MongoDB: {call_log_entry}")
-
-        # ✅ Extract structured data from transcript
-        structured_data = extract_user_info_from_transcript(transcript, phone_number)
-
-        return jsonify({"status": "success", "message": "Webhook processed successfully."})
-
-    except Exception as e:
-        print(f"❌ Webhook Processing Error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ✅ Start Flask App
