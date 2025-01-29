@@ -252,6 +252,15 @@ def vapi_webhook():
 
     return jsonify({"message": "Call data stored successfully!"}), 200
 
+@app.route("/get-user-calls/<customer_id>", methods=["GET"])
+def get_user_calls(customer_id):
+    user = users_collection.find_one({"Vapi_CustomerID": customer_id})
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({"calls": user.get("Calls", [])}), 200
+
 
 
 if __name__ == "__main__":
