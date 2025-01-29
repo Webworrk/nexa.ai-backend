@@ -53,7 +53,7 @@ def sync_vapi_calllogs():
         }
 
         # ✅ Fetch Call Logs from Vapi.ai
-        response = requests.get("https://api.vapi.ai/calls", headers=headers, timeout=30)
+        response = requests.get("https://api.vapi.ai/call", headers=headers, timeout=30)
 
         if response.status_code != 200:
             return jsonify({"error": "Failed to fetch call logs", "details": response.text}), response.status_code
