@@ -221,37 +221,20 @@ def start_call():
 
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
-    data = request.json  # Get the call event data from Vapi
+    data = request.json
+    call_id = data.get("id")
+    transcript = data.get("messages", [])
     
-    call_id = data.get("id")  # Unique Call ID from Vapi
-    customer_id = data.get("customerId")  # The user in your system
-    status = data.get("status")  # Call status (started, completed, etc.)
-    transcript = data.get("transcript", "No transcript available")  # Call transcript
-    duration = data.get("duration", 0)  # Call duration in seconds
-
-    # Find the user in MongoDB
-    user = users_collection.find_one({"Vapi_CustomerID": customer_id})
-    
-    if not user:
-        return jsonify({"error": "User not found in MongoDB"}), 400
-
-    # Create a call log entry
     call_log = {
-        "call_id": call_id,
-        "status": status,
-        "duration": duration,
-        "transcript": transcript,
-        "timestamp": datetime.utcnow()
+        "Call ID": call_id,
+        "Transcript": transcript,
+        "Status": "Processed"
     }
 
-    # Store the call log in MongoDB
-    users_collection.update_one(
-        {"Vapi_CustomerID": customer_id},
-        {"$push": {"Calls": call_log}}
-    )
+    # ✅ TEMP: Store without linking to user
+    db["CallLogs"].insert_one(call_log)
 
-    return jsonify({"message": "Call data stored successfully!"}), 200
-
+    return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
 @app.route("/get-user-calls/<customer_id>", methods=["GET"])
 def get_user_calls(customer_id):
     user = users_collection.find_one({"Vapi_CustomerID": customer_id})
