@@ -29,6 +29,9 @@ if not openai.api_key:
 def home():
     return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
 
+# Flask App Initialization (WRONG: Must be at the top!)
+app = Flask(__name__)
+
 # Register a new user
 @app.route("/register", methods=["POST"])
 def register_user():
