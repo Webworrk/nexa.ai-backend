@@ -18,18 +18,18 @@ MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("❌ MONGO_URI environment variable is missing!")
 
-client = MongoClient(MONGO_URI)
-db = client["Nexa"]
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["Nexa"]
 call_logs_collection = db["CallLogs"]
 users_collection = db["Users"]
 
 try:
-    print("✅ MongoDB Connected: ", client.server_info())
+    print("✅ MongoDB Connected: ", mongo_client.server_info())
 except Exception as e:
     print("❌ MongoDB Connection Failed:", e)
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
 
@@ -70,8 +70,8 @@ def extract_user_info_from_transcript(transcript):
         If any information is not available, use "Not Mentioned"."""
 
         # Make the API call to OpenAI using the new syntax
-        response = client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+        response = openai_client.chat.completions.create(
+            model="gpt-4-1106-preview",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Please extract information from this transcript:\n\n{transcript}"}
