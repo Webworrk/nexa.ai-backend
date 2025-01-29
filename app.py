@@ -229,7 +229,7 @@ def vapi_webhook():
     
     call_log = {
         "Call ID": call_id,
-        "Transcript": transcript,
+        "Transcript": transcript_text,
         "Status": call_status,
         "Timestamp": datetime.now().isoformat()
     }
