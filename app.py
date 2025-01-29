@@ -11,12 +11,11 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 
-# MongoDB Configuration
-# MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
 db = client["Nexa"]
 users_collection = db["Users"]
+call_logs_collection = db["CallLogs"]  # New collection for calls
 
 @app.route("/", methods=["GET"])
 def home():
@@ -219,31 +218,33 @@ def start_call():
         print(f"Unexpected error: {str(e)}")
         return jsonify({"error": "An unexpected error occurred", "details": str(e)}), 500
 
+# ✅ **Temporary Change**: Store all calls without `customer_id`
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     data = request.json
     call_id = data.get("id")
     transcript = data.get("messages", [])
+    call_status = data.get("status", "Completed")
     
     call_log = {
         "Call ID": call_id,
         "Transcript": transcript,
-        "Status": "Processed"
+        "Status": call_status,
+        "Timestamp": datetime.now().isoformat()
     }
 
-    # ✅ TEMP: Store without linking to user
-    db["CallLogs"].insert_one(call_log)
+    # ✅ **Store all calls, even if they don't have a linked user**
+    call_logs_collection.insert_one(call_log)
 
     return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
-@app.route("/get-user-calls/<customer_id>", methods=["GET"])
-def get_user_calls(customer_id):
-    user = users_collection.find_one({"Vapi_CustomerID": customer_id})
-    
-    if not user:
-        return jsonify({"error": "User not found"}), 404
 
-    return jsonify({"calls": user.get("Calls", [])}), 200
+# ✅ **Temporary Change**: Fetch all call logs without `customer_id`
+@app.route("/get-user-calls", methods=["GET"])
+def get_user_calls():
+    calls = list(call_logs_collection.find({}, {"_id": 0}))  # Get all calls
+    return jsonify({"calls": calls}), 200
 
+# ✅ **Final Step:** Re-add `customer_id` later when real users start using the system.
 
 
 if __name__ == "__main__":
