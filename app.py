@@ -309,6 +309,7 @@ def vapi_webhook():
         return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
 
 
+
 def extract_user_info_from_transcript(transcript):
     """
     Uses OpenAI API to extract structured user details from a call transcript.
