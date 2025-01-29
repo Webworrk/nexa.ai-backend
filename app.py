@@ -4,7 +4,7 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import os
 from datetime import datetime
-import openai
+from openai import OpenAI
 import json
 import hashlib
 
@@ -28,9 +28,9 @@ try:
 except Exception as e:
     print("❌ MongoDB Connection Failed:", e)
 
-# OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
 
 # Vapi.ai Configuration
@@ -69,8 +69,8 @@ def extract_user_info_from_transcript(transcript):
         
         If any information is not available, use "Not Mentioned"."""
 
-        # Make the API call to OpenAI
-        response = openai.ChatCompletion.create(
+        # Make the API call to OpenAI using the new syntax
+        response = client.chat.completions.create(
             model="gpt-4-turbo-preview",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -82,7 +82,7 @@ def extract_user_info_from_transcript(transcript):
 
         # Parse the response into a structured format
         try:
-            # Extract the response text
+            # Extract the response text using new syntax
             extraction_text = response.choices[0].message.content
             
             # Initialize default values
