@@ -328,5 +328,6 @@ def extract_user_info_from_transcript(transcript):
         }
 
 
-if __name__ != "__main__":
-    gunicorn_app = app  # ✅ Exposes Flask app to Gunicorn
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+
