@@ -55,7 +55,14 @@ def extract_user_info_from_transcript(transcript):
         "Name": "Not Mentioned",
         "Email": "Not Mentioned",
         "Profession": "Not Mentioned",
-        "Bio": "Not Mentioned",
+        "Bio_Components": {
+            "Company": "Not Mentioned",
+            "Experience": "Not Mentioned",
+            "Industry": "Not Mentioned",
+            "Background": "Not Mentioned",
+            "Achievements": "Not Mentioned",
+            "Current_Status": "Not Mentioned"
+        },
         "Networking Goal": "Not Mentioned",
         "Meeting Type": "Not Mentioned",
         "Proposed Meeting Date": "Not Mentioned",
@@ -67,21 +74,29 @@ def extract_user_info_from_transcript(transcript):
         return default_response
         
     try:
-        system_prompt = """You are an AI assistant that extracts information and returns it in JSON format.
+        system_prompt = """You are an AI assistant that extracts detailed information and returns it in JSON format.
         Extract the following fields and return them in a JSON object:
 
         {
-            "Name": "The person's name",
+            "Name": "Full name if mentioned",
             "Email": "Email if mentioned",
-            "Profession": "Their role/position",
-            "Bio": "Brief description of background",
-            "Networking Goal": "What they want to achieve",
-            "Meeting Type": "Virtual/In-person if specified",
+            "Profession": "Role and company name, e.g. 'Co-founder, MedX AI (Healthcare Startup)'",
+            "Bio_Components": {
+                "Company": "Company name",
+                "Experience": "Years of experience",
+                "Industry": "Industry sector",
+                "Background": "What they do and their expertise",
+                "Achievements": "Specific achievements and metrics",
+                "Current_Status": "Current company/product status"
+            },
+            "Networking Goal": "What they want to achieve in detail",
+            "Meeting Type": "Type of meeting requested",
             "Proposed Meeting Date": "Any mentioned date",
             "Proposed Meeting Time": "Any mentioned time",
-            "Call Summary": "Brief overview of key points"
+            "Call Summary": "Comprehensive overview of key points discussed"
         }
 
+        Be specific and detailed in the Bio_Components section.
         If a field is not mentioned in the transcript, use 'Not Mentioned' as the value.
         Remember to return the response in valid JSON format."""
 
@@ -102,13 +117,15 @@ def extract_user_info_from_transcript(transcript):
         # Clean and validate the extracted information
         cleaned_info = {}
         for key in default_response.keys():
-            value = str(extracted_info.get(key, "Not Mentioned")).strip()
-            cleaned_info[key] = value if value and value.lower() not in ["none", "null", "undefined", "not mentioned"] else "Not Mentioned"
+            if key == "Bio_Components":
+                cleaned_info[key] = {}
+                for bio_key in default_response[key].keys():
+                    value = str(extracted_info.get(key, {}).get(bio_key, "Not Mentioned")).strip()
+                    cleaned_info[key][bio_key] = value if value and value.lower() not in ["none", "null", "undefined", "not mentioned"] else "Not Mentioned"
+            else:
+                value = str(extracted_info.get(key, "Not Mentioned")).strip()
+                cleaned_info[key] = value if value and value.lower() not in ["none", "null", "undefined", "not mentioned"] else "Not Mentioned"
         
-        # Special handling for summary if not provided
-        if cleaned_info["Call Summary"] == "Not Mentioned":
-            cleaned_info["Call Summary"] = "Contact discussed networking opportunities."
-            
         print(f"✨ Cleaned Information: {json.dumps(cleaned_info, indent=2)}")
         return cleaned_info
 
@@ -116,6 +133,7 @@ def extract_user_info_from_transcript(transcript):
         print(f"❌ Error in OpenAI processing: {str(e)}")
         print(f"🔍 Stack trace: {traceback.format_exc()}")
         return default_response
+
 
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
@@ -237,7 +255,41 @@ def process_transcript(user_phone, transcript):
     try:
         print(f"Processing transcript for phone: {user_phone}")
         summary = extract_user_info_from_transcript(transcript)
-        print(f"Extracted information: {json.dumps(summary, indent=2)}")
+        
+        # Format Bio as a comprehensive sentence
+        bio_parts = summary.get('Bio_Components', {})
+        bio = f"Co-founder at {bio_parts.get('Company', 'their company')} "
+        
+        if bio_parts.get('Experience') != 'Not Mentioned':
+            bio += f"with {bio_parts.get('Experience')} of experience "
+        
+        if bio_parts.get('Industry') != 'Not Mentioned':
+            bio += f"in the {bio_parts.get('Industry')} industry. "
+        else:
+            bio += ". "
+            
+        if bio_parts.get('Background') != 'Not Mentioned':
+            bio += f"{bio_parts.get('Background')}. "
+            
+        if bio_parts.get('Achievements') != 'Not Mentioned':
+            bio += f"Key achievements include {bio_parts.get('Achievements')}. "
+            
+        if bio_parts.get('Current_Status') != 'Not Mentioned':
+            bio += f"Currently {bio_parts.get('Current_Status')}."
+
+        # Format conversation messages
+        messages = []
+        for msg in transcript.split('\n'):
+            if msg.startswith('AI: '):
+                messages.append({
+                    "role": "bot",
+                    "message": msg[4:].strip()
+                })
+            elif msg.startswith('User: '):
+                messages.append({
+                    "role": "user",
+                    "message": msg[6:].strip()
+                })
 
         # Find or create user
         user = users_collection.find_one({"Phone": user_phone})
@@ -250,7 +302,7 @@ def process_transcript(user_phone, transcript):
                 "Email": summary.get("Email", "Not Mentioned"),
                 "Phone": user_phone,
                 "Profession": summary.get("Profession", "Not Mentioned"),
-                "Bio": summary.get("Bio", "Not Mentioned"),
+                "Bio": bio,
                 "Signup Status": "Incomplete",
                 "Calls": []
             }
@@ -258,14 +310,12 @@ def process_transcript(user_phone, transcript):
             if not result.inserted_id:
                 raise Exception("Failed to create new user")
         elif summary.get("Name") != "Not Mentioned" or summary.get("Profession") != "Not Mentioned":
-            # Update user info if we got new information
             update_fields = {}
             if summary.get("Name") != "Not Mentioned":
                 update_fields["Name"] = summary.get("Name")
             if summary.get("Profession") != "Not Mentioned":
                 update_fields["Profession"] = summary.get("Profession")
-            if summary.get("Bio") != "Not Mentioned":
-                update_fields["Bio"] = summary.get("Bio")
+            update_fields["Bio"] = bio
             
             if update_fields:
                 users_collection.update_one(
@@ -286,20 +336,22 @@ def process_transcript(user_phone, transcript):
             "Meeting Link": None,
             "Participants Notified": False,
             "Status": "Ongoing",
-            "Call Summary": summary.get("Call Summary", "No summary available.")
+            "Call Summary": summary.get("Call Summary", "No summary available."),
+            "Conversation": messages
         }
 
-        # Update Users collection with call log
+        # Update Users collection
         users_collection.update_one(
             {"Phone": user_phone},
             {"$push": {"Calls": user_call_log}}
         )
 
-        # Update CallLogs with summary and processing status
+        # Update CallLogs collection
         call_logs_collection.update_one(
             {"Phone": user_phone, "Transcript Hash": hash_transcript(transcript)},
             {"$set": {
                 "Call Summary": summary.get("Call Summary", "No summary available."),
+                "Messages": messages,
                 "Processed": True,
                 "Last Updated": datetime.utcnow().isoformat()
             }}
