@@ -50,69 +50,70 @@ def hash_transcript(transcript):
 
 def extract_user_info_from_transcript(transcript):
     """
-    Extract relevant user information from call transcript using OpenAI's API.
+    Extract relevant user information from call transcript using OpenAI's API with JSON mode.
     Returns a dictionary containing structured information about the call.
     """
     try:
-        # Construct the system prompt for information extraction
-        system_prompt = """You are an AI assistant that extracts structured information from call transcripts.
-        Extract the following information in a consistent format:
-        - Name
-        - Email
-        - Profession
-        - Bio (a brief summary about the person)
-        - Networking Goal (what they want to achieve)
-        - Meeting Type (virtual/in-person)
-        - Proposed Meeting Date
-        - Proposed Meeting Time
-        - Call Summary (brief overview of the conversation)
-        
-        If any information is not available, use "Not Mentioned"."""
-
-        # Make the API call to OpenAI using the new syntax
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo-1106",
+            response_format={ "type": "json_object" },
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Please extract information from this transcript:\n\n{transcript}"}
+                {"role": "system", "content": "You are a helpful assistant that extracts structured information from call transcripts. Extract all available information and use 'Not Mentioned' for missing fields."},
+                {"role": "user", "content": f"Extract information from this transcript in JSON format:\n\n{transcript}"}
             ],
-            temperature=0.3,
-            max_tokens=1000
+            functions=[{
+                "name": "extract_info",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "Name": {
+                            "type": "string",
+                            "description": "Name of the person"
+                        },
+                        "Email": {
+                            "type": "string",
+                            "description": "Email address"
+                        },
+                        "Profession": {
+                            "type": "string",
+                            "description": "Person's profession or role"
+                        },
+                        "Bio": {
+                            "type": "string",
+                            "description": "Brief summary about the person"
+                        },
+                        "Networking Goal": {
+                            "type": "string",
+                            "description": "What they want to achieve through networking"
+                        },
+                        "Meeting Type": {
+                            "type": "string",
+                            "description": "Type of meeting (virtual/in-person)"
+                        },
+                        "Proposed Meeting Date": {
+                            "type": "string",
+                            "description": "Proposed date for meeting"
+                        },
+                        "Proposed Meeting Time": {
+                            "type": "string",
+                            "description": "Proposed time for meeting"
+                        },
+                        "Call Summary": {
+                            "type": "string",
+                            "description": "Brief overview of the conversation"
+                        }
+                    },
+                    "required": ["Name", "Email", "Profession", "Bio", "Networking Goal", 
+                               "Meeting Type", "Proposed Meeting Date", "Proposed Meeting Time", 
+                               "Call Summary"]
+                }
+            }],
+            temperature=0.3
         )
 
-        # Parse the response into a structured format
-        try:
-            # Extract the response text using new syntax
-            extraction_text = response.choices[0].message.content
-            
-            # Initialize default values
-            extracted_info = {
-                "Name": "Not Mentioned",
-                "Email": "Not Mentioned",
-                "Profession": "Not Mentioned",
-                "Bio": "Not Mentioned",
-                "Networking Goal": "Not Mentioned",
-                "Meeting Type": "Not Mentioned",
-                "Proposed Meeting Date": "Not Mentioned",
-                "Proposed Meeting Time": "Not Mentioned",
-                "Call Summary": "Not Mentioned"
-            }
-
-            # Parse the response text line by line
-            current_field = None
-            for line in extraction_text.split('\n'):
-                line = line.strip()
-                if line:
-                    # Check for field markers
-                    for field in extracted_info.keys():
-                        if line.lower().startswith(field.lower() + ':'):
-                            current_field = field
-                            value = line[len(field) + 1:].strip()
-                            if value and value.lower() != "not mentioned":
-                                extracted_info[field] = value
-                            break
-
-            return extracted_info
+        # Extract the JSON response
+        extracted_info = json.loads(response.choices[0].message.content)
+        return extracted_info
 
         except Exception as parsing_error:
             print(f"Error parsing OpenAI response: {parsing_error}")
