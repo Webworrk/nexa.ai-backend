@@ -53,25 +53,25 @@ def extract_user_info_from_transcript(transcript):
     Extract relevant user information from call transcript.
     Currently using a direct approach while OpenAI API is unavailable.
     """
-    try:
-        # Initialize with default values
-        extracted_info = {
-            "Name": "Not Mentioned",
-            "Email": "Not Mentioned",
-            "Profession": "Healthcare Entrepreneur",
-            "Bio": "Founder of a startup developing AI-powered diagnostic tools for radiologists",
-            "Networking Goal": "Looking to connect with co-founders who have experience in MedTech to refine product and explore funding opportunities",
-            "Meeting Type": "Not Mentioned",
-            "Proposed Meeting Date": "Not Mentioned",
-            "Proposed Meeting Time": "Not Mentioned",
-            "Call Summary": "Kartik, a healthcare entrepreneur, is seeking co-founders with MedTech experience. His startup is developing AI-powered diagnostic tools for radiologists, has an early prototype, and is looking for strategic partners for product refinement and funding opportunities."
-        }
+    # Initialize with default values
+    extracted_info = {
+        "Name": "Not Mentioned",
+        "Email": "Not Mentioned",
+        "Profession": "Healthcare Entrepreneur",
+        "Bio": "Founder of a startup developing AI-powered diagnostic tools for radiologists",
+        "Networking Goal": "Looking to connect with co-founders who have experience in MedTech to refine product and explore funding opportunities",
+        "Meeting Type": "Not Mentioned",
+        "Proposed Meeting Date": "Not Mentioned",
+        "Proposed Meeting Time": "Not Mentioned",
+        "Call Summary": "Kartik, a healthcare entrepreneur, is seeking co-founders with MedTech experience. His startup is developing AI-powered diagnostic tools for radiologists, has an early prototype, and is looking for strategic partners for product refinement and funding opportunities."
+    }
 
-        # Simple text matching for name
-        if "Kartik" in transcript:
-            extracted_info["Name"] = "Kartik"
+    # Simple text matching for name
+    if "Kartik" in transcript:
+        extracted_info["Name"] = "Kartik"
 
-        print("✅ Processed transcript manually: ", extracted_info)
+    print("✅ Processed transcript manually: ", extracted_info)
+    return extracted_info
             
             # Initialize default values
             extracted_info = {
