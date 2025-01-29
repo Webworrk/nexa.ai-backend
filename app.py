@@ -221,32 +221,33 @@ def start_call():
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     data = request.json
-    print("📥 Incoming Webhook Data:", data)  # 🔍 Log request for debugging
+    print("📥 Incoming Webhook Data:", data)  # Debugging log
+
+    call_id = data.get("call", {}).get("id", "Unknown Call ID")
+    call_status = data.get("message", {}).get("status", "Unknown Status")
+
+    # Extract transcript messages properly
+    transcript_messages = data.get("message", {}).get("artifact", {}).get("messages", [])
     
-    call_id = data.get("id")
-    transcript = data.get("messages", [])
-    call_status = data.get("status", "Completed")
-    
+    if not transcript_messages:
+        transcript_text = "No transcript available."
+    else:
+        # Extract all messages from the list
+        transcript_text = "\n".join([msg.get("message", "") for msg in transcript_messages])
+
+    # ✅ Store Call Log in MongoDB
     call_log = {
         "Call ID": call_id,
-        "Transcript": transcript_text,
+        "Transcript": transcript_text,  # 🔥 Now stores only the extracted text
         "Status": call_status,
         "Timestamp": datetime.now().isoformat()
     }
 
-    # ✅ Store all calls, even if they don’t have a linked user
     call_logs_collection.insert_one(call_log)
 
+    print("✅ Stored Call Log in MongoDB:", call_log)  # Debugging print
     return jsonify({"message": "Call log saved successfully!", "call_id": call_id}), 200
 
-
-# ✅ **Temporary Change**: Fetch all call logs without `customer_id`
-@app.route("/get-user-calls", methods=["GET"])
-def get_user_calls():
-    calls = list(call_logs_collection.find({}, {"_id": 0}))  # Get all calls
-    return jsonify({"calls": calls}), 200
-
-# ✅ **Final Step:** Re-add `customer_id` later when real users start using the system.
 
 
 if __name__ == "__main__":
