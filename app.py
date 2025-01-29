@@ -247,13 +247,24 @@ def vapi_webhook():
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
         summary = extract_user_info_from_transcript(transcript)
 
-        # ✅ Find User in Database
+        # ✅ Find User in Database or Create a New One
         user = users_collection.find_one({"Phone": user_phone})
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            # Creating a new user profile if not found
+            user = {
+                "Name": summary.get("Name", "Not Mentioned"),
+                "Email": summary.get("Email", "Not Mentioned"),
+                "Phone": user_phone,
+                "Profession": summary.get("Profession", "Not Mentioned"),
+                "Bio": summary.get("Bio", "Not Mentioned"),
+                "Signup Status": "Incomplete",
+                "Nexa ID": f"NEXA{users_collection.count_documents({}) + 1:05d}",
+                "Calls": []
+            }
+            users_collection.insert_one(user)
 
-        # ✅ Prepare Call Log Entry in Correct Format
-        call_log = {
+        # ✅ Prepare Call Log Entry in the Correct Format (for `Users` collection)
+        user_call_log = {
             "Call Number": len(user.get("Calls", [])) + 1,
             "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
             "Meeting Type": summary.get("Meeting Type", "Not Mentioned"),
@@ -275,13 +286,23 @@ def vapi_webhook():
             "Call Summary": summary.get("Call Summary", "No summary available.")
         }
 
-        # ✅ Update User Collection with New Call Log
+        # ✅ Update `Users` collection with new call log
         users_collection.update_one(
             {"Phone": user_phone},
-            {"$push": {"Calls": call_log}}
+            {"$push": {"Calls": user_call_log}}
         )
 
-        return jsonify({"message": "Call logged successfully!", "call_number": call_log["Call Number"]}), 200
+        # ✅ Prepare Call Log for `CallLogs` collection
+        call_log_entry = {
+            "Phone": user_phone,
+            "Call Summary": summary.get("Call Summary", "No summary available."),
+            "Transcript": transcript
+        }
+
+        # ✅ Store call log in `CallLogs` collection
+        call_logs_collection.insert_one(call_log_entry)
+
+        return jsonify({"message": "Call logged successfully!", "call_number": user_call_log["Call Number"]}), 200
 
     except Exception as e:
         print(f"❌ Error processing webhook: {e}")
@@ -299,7 +320,11 @@ def extract_user_info_from_transcript(transcript):
 
     Return the data in JSON format, following this structure:
     {{
+      "Name": "<User's Name or 'Not Mentioned'>",
+      "Email": "<User's Email or 'Not Mentioned'>",
       "Phone": "<User's Phone Number or 'Not Mentioned'>",
+      "Profession": "<User's Profession or 'Not Mentioned'>",
+      "Bio": "<A brief summary of the user's experience>",
       "Networking Goal": "<What the user wants to achieve>",
       "Meeting Type": "<Speed Dating | One-on-One | Not Mentioned>",
       "Proposed Meeting Date": "<Formatted Date or 'Not Yet Decided'>",
@@ -322,9 +347,12 @@ def extract_user_info_from_transcript(transcript):
         )
         extracted_data = json.loads(response["choices"][0]["message"]["content"])
 
-        # Ensure all fields are present
-        structured_data = {
+        return {
+            "Name": extracted_data.get("Name", "Not Mentioned"),
+            "Email": extracted_data.get("Email", "Not Mentioned"),
             "Phone": extracted_data.get("Phone", "Not Mentioned"),
+            "Profession": extracted_data.get("Profession", "Not Mentioned"),
+            "Bio": extracted_data.get("Bio", "Not Mentioned"),
             "Networking Goal": extracted_data.get("Networking Goal", "Not Mentioned"),
             "Meeting Type": extracted_data.get("Meeting Type", "Not Mentioned"),
             "Proposed Meeting Date": extracted_data.get("Proposed Meeting Date", "Not Yet Decided"),
@@ -337,12 +365,14 @@ def extract_user_info_from_transcript(transcript):
             "Call Summary": extracted_data.get("Call Summary", "No summary available.")
         }
 
-        return structured_data
-
     except Exception as e:
         print(f"❌ OpenAI Extraction Error: {e}")
         return {
+            "Name": "Not Mentioned",
+            "Email": "Not Mentioned",
             "Phone": "Not Mentioned",
+            "Profession": "Not Mentioned",
+            "Bio": "Not Mentioned",
             "Networking Goal": "Not Mentioned",
             "Meeting Type": "Not Mentioned",
             "Proposed Meeting Date": "Not Yet Decided",
@@ -354,7 +384,6 @@ def extract_user_info_from_transcript(transcript):
             "Requested To Bio": "Not Mentioned",
             "Call Summary": "No summary available."
         }
-
 
 
 if __name__ == "__main__":
