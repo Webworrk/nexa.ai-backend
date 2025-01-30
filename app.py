@@ -660,14 +660,25 @@ def get_user_context(phone_number):
             "timestamp": datetime.utcnow().isoformat()
         }), 500
 
-@app.route("/test-redis", methods=["GET"])
+@app.route("/test-redis", methods=["GET", "POST"])
 def test_redis():
     try:
+        if request.method == "POST":
+            # Check if request contains JSON data
+            if not request.is_json:
+                return jsonify({"error": "Request must be JSON", "status": 400}), 400
+
+        # Test Redis connection
         redis_client.set("test_key", "Hello Redis!", ex=10)
-        value = redis_client.get("test_key").decode("utf-8")
-        return jsonify({"status": "success", "message": value}), 200
+        value = redis_client.get("test_key")
+        
+        if value:
+            return jsonify({"status": "success", "message": value.decode("utf-8")}), 200
+        else:
+            return jsonify({"status": "error", "message": "Redis key not found"}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 if __name__ == "__main__":
