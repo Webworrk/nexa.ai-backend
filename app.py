@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_caching import Cache
 import redis
+from flask_caching import Cache
 import requests
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -28,14 +28,11 @@ app = Flask(__name__)
 CORS(app) 
 
 # Configure Redis for rate limiting
-redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-redis_client = redis.from_url(redis_url)
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
-# Initialize rate limiter
 limiter = Limiter(
-    app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    storage_uri="redis://localhost:6379"  # Use Redis for storage
 )
 
 # Initialize cache
