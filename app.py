@@ -575,27 +575,43 @@ def process_transcript(user_phone, transcript):
         raise
 
 @app.route("/user-context/<phone_number>", methods=["GET"])
-@limiter.limit("60 per minute")
+@Limiter.limit("60 per minute")
 @cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context(phone_number):
-    """Endpoint to fetch user context for Vapi.ai."""
+    """Endpoint to fetch user context for Vapi.ai"""
     try:
-        # Validate and standardize the phone number
+        logger.info(f"🔍 Received Phone Number: {phone_number}")
+        
+        # Validate and Standardize Phone Number
         try:
             standardized_phone = standardize_phone_number(phone_number)
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-            
-        # Find user in database using standardized format
-        user = users_collection.find_one({"Phone": standardized_phone})
+        except ValueError as ve:
+            logger.error(f"❌ Invalid Phone Number Format: {phone_number} - {str(ve)}")
+            return jsonify({"error": "Invalid phone format", "details": str(ve)}), 400
         
+        logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
+
+        # Query MongoDB for user (Check both with and without "+")
+        user = users_collection.find_one({
+            "$or": [
+                {"Phone": standardized_phone},
+                {"Phone": standardized_phone.replace("+", "")}  # Check without "+"
+            ]
+        })
+
         if not user:
-            logger.info(f"📱 New user with phone: {standardized_phone}")
-            return jsonify({
-                "exists": False,
-                "message": "New user detected",
-                "timestamp": datetime.utcnow().isoformat()
-            }), 200
+            logger.info(f"❌ No user found for {standardized_phone}")
+            return jsonify({"exists": False, "message": "New user detected"}), 200
+
+        # Convert _id to string to prevent serialization errors
+        user["_id"] = str(user["_id"])
+
+        return jsonify({"exists": True, "message": "User found", "user": user}), 200
+
+    except Exception as e:
+        logger.error(f"❌ Error: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+
             
         # Get last 3 calls for recent context
         recent_calls = user.get("Calls", [])[-3:]
