@@ -209,7 +209,7 @@ def health_check():
 
     except Exception as e:
         logger.error(f"❌ Error in /health: {str(e)}")
-        error_response = jsonify({
+        error_response = {
             "status": "unhealthy",
             "error": {
                 "message": str(e),
@@ -219,10 +219,8 @@ def health_check():
                 "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
                 "server_time": datetime.utcnow().isoformat()
             }
-        })
-
-        error_response.headers["Content-Type"] = "application/json"
-        return error_response, 500
+        }
+        return jsonify(error_response), 500
 
 
 def extract_user_info_from_transcript(transcript):
