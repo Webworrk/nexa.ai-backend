@@ -145,15 +145,13 @@ def log_request_info():
 @app.before_request
 def before_request():
     """Handle request logging and ensure correct headers"""
-    
-    # Log request info
-    logger.info(f"📥 Incoming Request: {request.method} {request.url}")
+    logger.info(f"📩 Incoming Request: {request.method} {request.url}")
     logger.info(f"Headers: {dict(request.headers)}")
-    
-    # Handle HEAD requests separately
+
+    # Handle HEAD requests
     if request.method == "HEAD":
         return make_response('', 200)
-    
+
     # Ensure JSON requests have correct headers for POST, PUT, PATCH
     if request.method in ["POST", "PUT", "PATCH"]:
         if not request.is_json:
@@ -182,11 +180,6 @@ def handle_500_error(e):
         "timestamp": datetime.utcnow().isoformat()
     }), 500
 
-# Add the before_request handler here
-@app.before_request
-def before_request():
-    if request.method == "HEAD":
-        return make_response('', 200)
 
 @app.route("/", methods=["GET"])
 def home():
