@@ -144,13 +144,26 @@ def log_request_info():
 
 @app.before_request
 def before_request():
+    """Handle request logging and ensure correct headers"""
+    
+    # Log request info
+    logger.info(f"📥 Incoming Request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    # Handle HEAD requests separately
     if request.method == "HEAD":
         return make_response('', 200)
     
-    # Ensure JSON requests have correct headers
+    # Ensure JSON requests have correct headers for POST, PUT, PATCH
     if request.method in ["POST", "PUT", "PATCH"]:
         if not request.is_json:
+            logger.warning("⚠️ Non-JSON body received")
             return jsonify({"error": "Request must be JSON", "status": 415}), 415
+
+    # Log request body if it's JSON
+    if request.is_json:
+        logger.info(f"Body: {request.get_json()}")
+
 
 
 @app.errorhandler(HTTPException)
