@@ -575,7 +575,7 @@ def process_transcript(user_phone, transcript):
         raise
 
 @app.route("/user-context/<phone_number>", methods=["GET"])
-@Limiter.limit("60 per minute", key_func=get_remote_address)
+@limiter.limit("60 per minute", override_defaults=False)
 @cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context(phone_number):
     """Endpoint to fetch user context for Vapi.ai"""
