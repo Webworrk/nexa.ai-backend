@@ -187,7 +187,7 @@ def health_check():
 
     try:
         db_status = mongo_client.server_info()
-        response = jsonify({
+        response_data = {
             "status": "healthy",
             "database": {
                 "status": "connected",
@@ -198,14 +198,18 @@ def health_check():
                 "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
                 "server_time": datetime.utcnow().isoformat()
             }
-        })
+        }
+
+        # Force setting Content-Type explicitly
+        response = jsonify(response_data)
         response.headers["Content-Type"] = "application/json"
+
         logger.info("✅ /health request processed successfully")
         return response, 200
 
     except Exception as e:
         logger.error(f"❌ Error in /health: {str(e)}")
-        return jsonify({
+        error_response = jsonify({
             "status": "unhealthy",
             "error": {
                 "message": str(e),
@@ -215,7 +219,10 @@ def health_check():
                 "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
                 "server_time": datetime.utcnow().isoformat()
             }
-        }), 500
+        })
+
+        error_response.headers["Content-Type"] = "application/json"
+        return error_response, 500
 
 
 def extract_user_info_from_transcript(transcript):
