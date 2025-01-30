@@ -173,17 +173,30 @@ def health_check():
     """Health check endpoint"""
     try:
         # Test MongoDB connection
-        mongo_client.server_info()
+        db_status = mongo_client.server_info()
         return jsonify({
             "status": "healthy",
-            "database": "connected",
-            "timestamp": datetime.utcnow().isoformat()
+            "database": {
+                "status": "connected",
+                "version": db_status.get("version"),
+                "connection": str(mongo_client.address if mongo_client else "Not connected")
+            },
+            "environment": {
+                "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
+                "server_time": datetime.utcnow().isoformat()
+            }
         }), 200
     except Exception as e:
         return jsonify({
             "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "error": {
+                "message": str(e),
+                "type": type(e).__name__
+            },
+            "environment": {
+                "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
+                "server_time": datetime.utcnow().isoformat()
+            }
         }), 500
 
 def extract_user_info_from_transcript(transcript):
