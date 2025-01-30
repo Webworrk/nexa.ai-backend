@@ -137,8 +137,7 @@ def before_request():
 
     # Handle HEAD requests separately
     if request.method == "HEAD":
-        response = make_response('', 200)
-        return response
+        return "", 200  # Properly returning an empty response
 
     # Ensure JSON requests have correct headers
     if request.method in ["POST", "PUT", "PATCH"]:
@@ -146,9 +145,12 @@ def before_request():
             logger.warning("⚠️ Non-JSON body received")
             return jsonify({"error": "Request must be JSON", "status": 415}), 415
 
-    # Log request body if it's JSON
+    # Log request body if it's JSON, safely
     if request.is_json:
-        logger.info(f"Body: {request.get_json()}")
+        try:
+            logger.info(f"Body: {request.get_json()}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error parsing JSON body: {str(e)}")
 
 
 
@@ -678,6 +680,10 @@ def test_redis():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route("/test-endpoint", methods=["POST"])
+def test_endpoint():
+    data = request.get_json()
+    return jsonify({"message": "Received data", "data": data}), 200
 
 
 if __name__ == "__main__":
