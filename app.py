@@ -108,33 +108,22 @@ def setup_mongodb_indexes():
 setup_mongodb_indexes()
 
 def standardize_phone_number(phone):
-    """
-    Standardize phone number to E.164 format
-    Valid formats:
-    - 10 digits: 9876543210
-    - With country code: 919876543210
-    - With +: +919876543210
-    """
+    """ Standardize phone number to E.164 format """
+
     try:
-        # Remove any non-digit characters
-        phone = ''.join(filter(str.isdigit, str(phone)))
-        
-        # Handle different formats
-        if len(phone) == 10:  # Local number
+        phone = ''.join(filter(str.isdigit, str(phone)))  # Remove any non-digit characters
+        if len(phone) == 10:
             return f"+91{phone}"
-        elif len(phone) == 11 and phone.startswith('0'):
-            return f"+91{phone[1:]}"
-        elif len(phone) == 12 and phone.startswith('91'):
+        elif len(phone) == 12 and phone.startswith("91"):
             return f"+{phone}"
-        elif len(phone) == 13 and phone.startswith('91'):
-            return f"+{phone}"
+        elif len(phone) == 13 and phone.startswith("+91"):
+            return phone
         else:
-            raise ValueError(
-                "Invalid phone number format. Must be 10 digits or include +91 country code."
-            )
+            raise ValueError(f"❌ Invalid phone format: {phone}")
     except Exception as e:
         logger.error(f"Phone number standardization failed: {str(e)}")
         raise
+
 
 def hash_transcript(transcript):
     """Generate a unique hash for the transcript"""
