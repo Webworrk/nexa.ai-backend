@@ -165,21 +165,14 @@ def before_request():
     if request.method == "HEAD":
         return make_response('', 200)
 
-@app.route("/", methods=["GET", "HEAD"])
+@app.route("/", methods=["GET"])
 def home():
-    """Home endpoint"""
-    data = {
+    logger.info("📥 Received / request")
+    return jsonify({
         "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
-    }
-    
-    if request.method == "HEAD":
-        response = make_response()
-        response.headers["Content-Type"] = "application/json"
-        return response
-        
-    return jsonify(data)
+    }), 200
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -200,27 +193,13 @@ def health_check():
             }
         }
 
-        # Force setting Content-Type explicitly
         response = jsonify(response_data)
         response.headers["Content-Type"] = "application/json"
-
-        logger.info("✅ /health request processed successfully")
         return response, 200
 
     except Exception as e:
         logger.error(f"❌ Error in /health: {str(e)}")
-        error_response = {
-            "status": "unhealthy",
-            "error": {
-                "message": str(e),
-                "type": type(e).__name__
-            },
-            "environment": {
-                "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
-                "server_time": datetime.utcnow().isoformat()
-            }
-        }
-        return jsonify(error_response), 500
+        return jsonify({"error": str(e), "status": "unhealthy"}), 500
 
 
 def extract_user_info_from_transcript(transcript):
