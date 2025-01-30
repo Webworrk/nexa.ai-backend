@@ -8,42 +8,78 @@ from openai import OpenAI
 import json
 import hashlib
 import traceback
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 # Load environment variables
 load_dotenv()
 
+def standardize_phone_number(phone):
+    """
+    Standardize phone number format to E.164 format
+    Example: +918098758196
+    """
+    # Remove any non-digit characters
+    phone = ''.join(filter(str.isdigit, str(phone)))
+    
+    # Handle Indian numbers
+    if len(phone) == 10:  # Local number without country code
+        return f"+91{phone}"
+    elif len(phone) == 11 and phone.startswith('0'):  # Local number with leading 0
+        return f"+91{phone[1:]}"
+    elif len(phone) == 12 and phone.startswith('91'):  # Number with country code without +
+        return f"+{phone}"
+    elif len(phone) == 13 and phone.startswith('+91'):  # Complete international format
+        return phone
+    else:
+        raise ValueError(f"Invalid phone number format: {phone}")
+
 # Connect to MongoDB
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("❌ MONGO_URI environment variable is missing!")
 
-mongo_client = MongoClient(MONGO_URI)
-db = mongo_client["Nexa"]
-call_logs_collection = db["CallLogs"]
-users_collection = db["Users"]
-
 try:
-    print("✅ MongoDB Connected: ", mongo_client.server_info())
+    mongo_client = MongoClient(MONGO_URI)
+    # Test the connection
+    mongo_client.server_info()
+    logger.info("✅ MongoDB Connected Successfully")
+    
+    db = mongo_client["Nexa"]
+    call_logs_collection = db["CallLogs"]
+    users_collection = db["Users"]
+    
 except Exception as e:
-    print("❌ MongoDB Connection Failed:", e)
+    logger.error(f"❌ MongoDB Connection Failed: {str(e)}")
+    logger.error(f"Stack trace: {traceback.format_exc()}")
+    raise
 
 # Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-if not os.getenv("OPENAI_API_KEY"):
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
     raise ValueError("❌ OPENAI_API_KEY environment variable is missing!")
+
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Vapi.ai Configuration
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 
 if not VAPI_API_KEY or not VAPI_ASSISTANT_ID:
-    print("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
+    logger.warning("⚠️ WARNING: Missing Vapi.ai API Key or Assistant ID!")
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live."}), 200
+    return jsonify({
+        "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 200
 
 def hash_transcript(transcript):
     """Generate a unique hash for the transcript to prevent duplicates."""
@@ -110,7 +146,7 @@ def extract_user_info_from_transcript(transcript):
             temperature=0.1
         )
 
-        print(f"📝 OpenAI Response: {response.choices[0].message.content}")
+        logger.info(f"📝 OpenAI Response: {response.choices[0].message.content}")
         
         extracted_info = json.loads(response.choices[0].message.content)
         
@@ -126,14 +162,13 @@ def extract_user_info_from_transcript(transcript):
                 value = str(extracted_info.get(key, "Not Mentioned")).strip()
                 cleaned_info[key] = value if value and value.lower() not in ["none", "null", "undefined", "not mentioned"] else "Not Mentioned"
         
-        print(f"✨ Cleaned Information: {json.dumps(cleaned_info, indent=2)}")
+        logger.info(f"✨ Cleaned Information: {json.dumps(cleaned_info, indent=2)}")
         return cleaned_info
 
     except Exception as e:
-        print(f"❌ Error in OpenAI processing: {str(e)}")
-        print(f"🔍 Stack trace: {traceback.format_exc()}")
+        logger.error(f"❌ Error in OpenAI processing: {str(e)}")
+        logger.error(f"🔍 Stack trace: {traceback.format_exc()}")
         return default_response
-
 
 @app.route("/sync-vapi-calllogs", methods=["GET"])
 def sync_vapi_calllogs():
@@ -143,10 +178,18 @@ def sync_vapi_calllogs():
             "Content-Type": "application/json"
         }
 
-        response = requests.get("https://api.vapi.ai/call", headers=headers, timeout=30)
+        response = requests.get(
+            "https://api.vapi.ai/call", 
+            headers=headers, 
+            timeout=30
+        )
 
         if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch call logs", "details": response.text}), response.status_code
+            logger.error(f"Failed to fetch call logs: {response.text}")
+            return jsonify({
+                "error": "Failed to fetch call logs", 
+                "details": response.text
+            }), response.status_code
 
         call_logs = response.json()
 
@@ -156,6 +199,12 @@ def sync_vapi_calllogs():
         processed_count = 0
         for log in call_logs:
             user_phone = log.get("customer", {}).get("number", "Unknown")
+            try:
+                user_phone = standardize_phone_number(user_phone)
+            except ValueError as e:
+                logger.error(f"Invalid phone number format: {user_phone}")
+                continue
+
             transcript = log.get("messages", [{}])[-1].get("artifact", {}).get("transcript", "Not Available")
             transcript_hash = hash_transcript(transcript)
             timestamp = datetime.utcnow().isoformat()
@@ -166,7 +215,7 @@ def sync_vapi_calllogs():
             })
 
             if existing_log:
-                print(f"⚠️ Skipping duplicate log for {user_phone}")
+                logger.warning(f"⚠️ Skipping duplicate log for {user_phone}")
                 continue
 
             call_entry = {
@@ -181,7 +230,7 @@ def sync_vapi_calllogs():
             result = call_logs_collection.insert_one(call_entry)
             if result.inserted_id:
                 processed_count += 1
-                print(f"✅ Call log stored for {user_phone}")
+                logger.info(f"✅ Call log stored for {user_phone}")
                 process_transcript(user_phone, transcript)
 
         return jsonify({
@@ -191,28 +240,37 @@ def sync_vapi_calllogs():
         }), 200
 
     except Exception as e:
-        print(f"❌ Sync Error: {str(e)}")
-        print(f"Stack trace: {traceback.format_exc()}")
-        return jsonify({"error": "Syncing call logs failed", "details": str(e)}), 500
+        logger.error(f"❌ Sync Error: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Syncing call logs failed", 
+            "details": str(e)
+        }), 500
 
 @app.route("/vapi-webhook", methods=["POST"])
 def vapi_webhook():
     try:
         data = request.get_json()
         if not data:
-            print("❌ No JSON received!")
+            logger.error("❌ No JSON received!")
             return jsonify({"error": "No JSON received"}), 400
         
-        print("📥 Incoming Webhook Data:", json.dumps(data, indent=4))
+        logger.info("📥 Incoming Webhook Data: %s", json.dumps(data, indent=4))
         
         user_phone = data.get("message", {}).get("customer", {}).get("number")
         if not user_phone:
-            print("❌ Phone number missing!")
+            logger.error("❌ Phone number missing!")
             return jsonify({"error": "Phone number not provided"}), 400
+
+        try:
+            user_phone = standardize_phone_number(user_phone)
+        except ValueError as e:
+            logger.error(f"Invalid phone number format: {user_phone}")
+            return jsonify({"error": str(e)}), 400
 
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
         if not transcript or transcript == "Not Mentioned":
-            print("❌ No transcript in webhook data!")
+            logger.error("❌ No transcript in webhook data!")
             return jsonify({"error": "No transcript provided"}), 400
 
         transcript_hash = hash_transcript(transcript)
@@ -224,7 +282,7 @@ def vapi_webhook():
         })
 
         if existing_log:
-            print(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
+            logger.warning(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
             return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
 
         call_log_entry = {
@@ -238,22 +296,25 @@ def vapi_webhook():
         
         result = call_logs_collection.insert_one(call_log_entry)
         if result.inserted_id:
-            print("✅ Call log successfully stored.")
+            logger.info("✅ Call log successfully stored.")
             process_transcript(user_phone, transcript)
             return jsonify({"message": "✅ Call log stored and processed successfully!"}), 200
         else:
-            print("❌ Failed to store call log!")
+            logger.error("❌ Failed to store call log!")
             return jsonify({"error": "Failed to store call log"}), 500
 
     except Exception as e:
-        print(f"❌ Webhook Error: {str(e)}")
-        print(f"Stack trace: {traceback.format_exc()}")
-        return jsonify({"error": "Webhook processing failed", "details": str(e)}), 500
+        logger.error(f"❌ Webhook Error: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Webhook processing failed", 
+            "details": str(e)
+        }), 500
 
 def process_transcript(user_phone, transcript):
     """Process transcript and update both Users and CallLogs collections."""
     try:
-        print(f"Processing transcript for phone: {user_phone}")
+        logger.info(f"Processing transcript for phone: {user_phone}")
         summary = extract_user_info_from_transcript(transcript)
         
         # Format Bio as a comprehensive sentence
@@ -294,7 +355,7 @@ def process_transcript(user_phone, transcript):
         # Find or create user
         user = users_collection.find_one({"Phone": user_phone})
         if not user:
-            print(f"👤 Creating new user for phone: {user_phone}")
+            logger.info(f"👤 Creating new user for phone: {user_phone}")
             next_id = users_collection.count_documents({}) + 1
             user = {
                 "Nexa ID": f"NEXA{next_id:05d}",
@@ -357,12 +418,81 @@ def process_transcript(user_phone, transcript):
             }}
         )
 
-        print(f"✅ Call processed & User Updated: {user_phone}")
-        print(f"📝 Call Summary: {summary.get('Call Summary')}")
+        logger.info(f"✅ Call processed & User Updated: {user_phone}")
+        logger.info(f"📝 Call Summary: {summary.get('Call Summary')}")
 
     except Exception as e:
-        print(f"❌ Error Processing Transcript: {str(e)}")
-        print(f"Stack trace: {traceback.format_exc()}")
+        logger.error(f"❌ Error Processing Transcript: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+
+@app.route("/user-context/<phone_number>", methods=["GET"])
+def get_user_context(phone_number):
+    """Endpoint to fetch user context for Vapi.ai."""
+    try:
+        # Standardize the phone number format
+        try:
+            standardized_phone = standardize_phone_number(phone_number)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+            
+        # Find user in database using standardized format
+        user = users_collection.find_one({"Phone": standardized_phone})
+        
+        if not user:
+            logger.info(f"📱 New user with phone: {standardized_phone}")
+            return jsonify({
+                "exists": False,
+                "message": "New user detected"
+            }), 200
+            
+        # Get last 3 calls for recent context
+        recent_calls = user.get("Calls", [])[-3:]
+        
+        # Get networking goals from recent calls
+        networking_goals = [
+            call.get("Networking Goal") 
+            for call in recent_calls 
+            if call.get("Networking Goal") != "Not Mentioned"
+        ]
+        
+        # Format the context response
+        context = {
+            "exists": True,
+            "user_info": {
+                "name": user.get("Name"),
+                "profession": user.get("Profession"),
+                "bio": user.get("Bio"),
+                "email": user.get("Email"),
+                "nexa_id": user.get("Nexa ID"),
+                "signup_status": user.get("Signup Status"),
+                "total_calls": len(user.get("Calls", [])),
+                "networking_goals": networking_goals
+            },
+            "recent_interactions": [{
+                "call_number": call.get("Call Number"),
+                "networking_goal": call.get("Networking Goal"),
+                "meeting_type": call.get("Meeting Type"),
+                "meeting_status": call.get("Meeting Status"),
+                "proposed_date": call.get("Proposed Meeting Date"),
+                "proposed_time": call.get("Proposed Meeting Time"),
+                "call_summary": call.get("Call Summary")
+            } for call in recent_calls]
+        }
+        
+        logger.info(f"✅ Context retrieved for user: {standardized_phone}")
+        logger.debug(f"📝 Context: {json.dumps(context, indent=2)}")
+        
+        return jsonify(context), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching user context: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Failed to fetch user context",
+            "details": str(e)
+        }), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    # Use PORT environment variable if available (for Render deployment)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
