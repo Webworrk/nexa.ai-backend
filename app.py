@@ -130,29 +130,17 @@ def hash_transcript(transcript):
     return hashlib.sha256(transcript.encode()).hexdigest()
 
 @app.before_request
-def log_request_info():
-    """Log incoming request details for debugging"""
+def before_request():
+    """Log incoming requests, ensure correct headers, and handle HEAD requests."""
     logger.info(f"📥 Incoming Request: {request.method} {request.url}")
     logger.info(f"Headers: {dict(request.headers)}")
-    
-    if request.method in ["POST", "PUT", "PATCH"]:
-        if request.is_json:
-            logger.info(f"Body: {request.get_json()}")
-        else:
-            logger.warning("⚠️ Non-JSON body received")
 
-
-@app.before_request
-def before_request():
-    """Handle request logging and ensure correct headers"""
-    logger.info(f"📩 Incoming Request: {request.method} {request.url}")
-    logger.info(f"Headers: {dict(request.headers)}")
-
-    # Handle HEAD requests
+    # Handle HEAD requests separately
     if request.method == "HEAD":
-        return make_response('', 200)
+        response = make_response('', 200)
+        return response
 
-    # Ensure JSON requests have correct headers for POST, PUT, PATCH
+    # Ensure JSON requests have correct headers
     if request.method in ["POST", "PUT", "PATCH"]:
         if not request.is_json:
             logger.warning("⚠️ Non-JSON body received")
