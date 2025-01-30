@@ -14,6 +14,7 @@ import traceback
 import logging
 from openai import OpenAI
 from flask_cors import CORS
+from flask import make_response
 
 
 # Configure logging
@@ -167,19 +168,29 @@ def handle_500_error(e):
         "timestamp": datetime.utcnow().isoformat()
     }), 500
 
+# Add the before_request handler here
+@app.before_request
+def before_request():
+    if request.method == "HEAD":
+        return make_response('', 200)
+
 @app.route("/", methods=["GET", "HEAD"])
 def home():
     """Home endpoint"""
+    # For HEAD requests
     if request.method == "HEAD":
-        return "", 200
-        
+        response = make_response('')
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    # For GET requests
     response = jsonify({
         "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
     })
-    response.headers.add('Content-Type', 'application/json')
-    return response, 200
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 @app.route("/health", methods=["GET"])
 def health_check():
