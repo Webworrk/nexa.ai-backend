@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
+import redis
 import requests
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app) 
+
+# Configure Redis for rate limiting
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+redis_client = redis.from_url(redis_url)
 
 # Initialize rate limiter
 limiter = Limiter(
@@ -166,13 +171,15 @@ def handle_500_error(e):
 def home():
     """Home endpoint"""
     if request.method == "HEAD":
-        return "", 200  # Return empty response for HEAD requests
+        return "", 200
         
-    return jsonify({
+    response = jsonify({
         "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
-    }), 200
+    })
+    response.headers.add('Content-Type', 'application/json')
+    return response, 200
 
 @app.route("/health", methods=["GET"])
 def health_check():
