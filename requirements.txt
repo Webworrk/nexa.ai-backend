@@ -8,6 +8,7 @@ uvicorn==0.25.0
 aiohttp==3.9.1
 websockets==12.0
 flask-cors==4.0.0
+redis==5.0.1
 
 # Database
 motor==3.3.2
