@@ -12,6 +12,8 @@ import hashlib
 import traceback
 import logging
 from openai import OpenAI
+from flask_cors import CORS
+
 
 # Configure logging
 logging.basicConfig(
@@ -21,6 +23,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app) 
 
 # Initialize rate limiter
 limiter = Limiter(
@@ -159,9 +162,12 @@ def handle_500_error(e):
         "timestamp": datetime.utcnow().isoformat()
     }), 500
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET", "HEAD"])
 def home():
     """Home endpoint"""
+    if request.method == "HEAD":
+        return "", 200  # Return empty response for HEAD requests
+        
     return jsonify({
         "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
         "status": "healthy",
