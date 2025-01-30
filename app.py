@@ -131,17 +131,27 @@ def hash_transcript(transcript):
 
 @app.before_request
 def log_request_info():
-    """Log incoming request details"""
-    logger.info(f"Request: {request.method} {request.url}")
-    logger.debug(f"Headers: {dict(request.headers)}")
-    if request.get_json():
-        logger.debug(f"Body: {request.get_json()}")
+    """Log incoming request details for debugging"""
+    logger.info(f"📥 Incoming Request: {request.method} {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    if request.method in ["POST", "PUT", "PATCH"]:
+        if request.is_json:
+            logger.info(f"Body: {request.get_json()}")
+        else:
+            logger.warning("⚠️ Non-JSON body received")
 
-# After your Flask app initialization:
-@app.after_request
-def after_request(response):
-    response.headers.add('Content-Type', 'application/json')
-    return response
+
+@app.before_request
+def before_request():
+    if request.method == "HEAD":
+        return make_response('', 200)
+    
+    # Ensure JSON requests have correct headers
+    if request.method in ["POST", "PUT", "PATCH"]:
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON", "status": 415}), 415
+
 
 @app.errorhandler(HTTPException)
 def handle_exception(e):
