@@ -15,7 +15,7 @@ import logging
 from openai import OpenAI
 from flask_cors import CORS
 from flask import make_response
-
+from werkzeug.exceptions import HTTPException
 
 # Configure logging
 logging.basicConfig(
@@ -146,19 +146,19 @@ def log_request_info():
     if request.get_json():
         logger.debug(f"Body: {request.get_json()}")
 
+# After your Flask app initialization:
 @app.after_request
-def log_response_info(response):
-    """Log response details"""
-    logger.info(f"Response: {response.status}")
+def after_request(response):
+    response.headers.add('Content-Type', 'application/json')
     return response
 
-@app.errorhandler(404)
-def handle_404_error(e):
+@app.errorhandler(HTTPException)
+def handle_exception(e):
     return jsonify({
-        "error": "Endpoint not found",
-        "status": "error",
+        "error": e.description,
+        "status": e.code,
         "timestamp": datetime.utcnow().isoformat()
-    }), 404
+    }), e.code
 
 @app.errorhandler(500)
 def handle_500_error(e):
@@ -177,20 +177,18 @@ def before_request():
 @app.route("/", methods=["GET", "HEAD"])
 def home():
     """Home endpoint"""
-    # For HEAD requests
-    if request.method == "HEAD":
-        response = make_response('')
-        response.headers['Content-Type'] = 'application/json'
-        return response
-
-    # For GET requests
-    response = jsonify({
+    data = {
         "message": "Welcome to Nexa Backend! Your AI-powered networking assistant is live.",
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat()
-    })
-    response.headers['Content-Type'] = 'application/json'
-    return response
+    }
+    
+    if request.method == "HEAD":
+        response = make_response()
+        response.headers["Content-Type"] = "application/json"
+        return response
+        
+    return jsonify(data)
 
 @app.route("/health", methods=["GET"])
 def health_check():
