@@ -108,66 +108,21 @@ def setup_mongodb_indexes():
 setup_mongodb_indexes()
 
 def standardize_phone_number(phone):
-    """Standardize phone number format"""
-    try:
-        # Log incoming phone number for debugging
-        logger.info(f"Standardizing phone number: {phone}")
-        
-        # First, convert to string and clean non-digit characters
-        phone = str(phone).strip()
-        
-        # Handle literal '$phone_number' case
-        if phone in ['$phone_number', 'phone_number']:
-            logger.warning("Received literal $phone_number")
-            return None
-            
-        # Handle the case where phone starts with '$' or contains 'phone_number'
-        phone = phone.replace('$', '').replace('phone_number', '')
-        
-        # If after cleaning we have nothing left, return None
-        if not phone:
-            logger.warning("Empty phone number after cleaning")
-            return None
-            
-        # If already in correct format, return as is
-        if phone.startswith('+91') and len(phone) == 13:
-            logger.info(f"Phone number already in correct format: {phone}")
-            return phone
-            
-        # Remove any non-digit characters except leading +
-        if phone.startswith('+'):
-            cleaned = '+' + ''.join(filter(str.isdigit, phone[1:]))
-        else:
-            cleaned = ''.join(filter(str.isdigit, phone))
-        
-        # Add or fix country code
-        result = None
-        if len(cleaned) == 10:  # No country code
-            result = f"+91{cleaned}"
-        elif len(cleaned) == 11 and cleaned.startswith('0'):  # Remove leading 0
-            result = f"+91{cleaned[1:]}"
-        elif len(cleaned) == 12 and cleaned.startswith('91'):  # Add + prefix
-            result = f"+{cleaned}"
-        elif len(cleaned) == 13 and cleaned.startswith('+91'):  # Already correct
-            result = cleaned
-        elif len(cleaned) >= 12:  # Some other format, just ensure + prefix
-            if not cleaned.startswith('+'):
-                result = f"+{cleaned}"
-            else:
-                result = cleaned
-        
-        if result:
-            logger.info(f"✅ Successfully standardized phone: {phone} -> {result}")
-            return result
-            
-        logger.warning(f"⚠️ Unusual phone format: {phone} -> {cleaned}")
-        return cleaned
-        
-    except Exception as e:
-        logger.error(f"Error standardizing phone number: {str(e)} for input: {phone}")
-        logger.error(traceback.format_exc())  # Log full stack trace
-        return None  # Return None if processing fails completely
+    """ Standardize phone number to E.164 format """
 
+    try:
+        phone = ''.join(filter(str.isdigit, str(phone)))  # Remove any non-digit characters
+        if len(phone) == 10:
+            return f"+91{phone}"
+        elif len(phone) == 12 and phone.startswith("91"):
+            return f"+{phone}"
+        elif len(phone) == 13 and phone.startswith("+91"):
+            return phone
+        else:
+            raise ValueError(f"❌ Invalid phone format: {phone}")
+    except Exception as e:
+        logger.error(f"Phone number standardization failed: {str(e)}")
+        raise
 
 
 def hash_transcript(transcript):
@@ -434,7 +389,6 @@ def vapi_webhook():
         
         logger.info("📥 Incoming Webhook Data: %s", json.dumps(data, indent=4))
         
-        # Extract phone number from customer data
         user_phone = data.get("message", {}).get("customer", {}).get("number")
         if not user_phone:
             logger.error("❌ Phone number missing!")
@@ -446,7 +400,6 @@ def vapi_webhook():
             logger.error(f"Invalid phone number format: {user_phone}")
             return jsonify({"error": str(e)}), 400
 
-        # Extract transcript
         transcript = data.get("message", {}).get("artifact", {}).get("transcript", "Not Mentioned")
         if not transcript or transcript == "Not Mentioned":
             logger.error("❌ No transcript in webhook data!")
@@ -455,7 +408,6 @@ def vapi_webhook():
         transcript_hash = hash_transcript(transcript)
         timestamp = datetime.utcnow().isoformat()
 
-        # Check for duplicate call log
         existing_log = call_logs_collection.find_one({
             "Phone": user_phone,
             "Transcript Hash": transcript_hash
@@ -465,31 +417,23 @@ def vapi_webhook():
             logger.warning(f"⚠️ Duplicate call log detected for {user_phone}. Skipping insertion.")
             return jsonify({"message": "Duplicate call log detected. Skipping."}), 200
 
-        # Prepare call log entry
         call_log_entry = {
             "Phone": user_phone,
             "Call Summary": "Processing...",
             "Transcript": transcript,
             "Transcript Hash": transcript_hash,
             "Timestamp": timestamp,
-            "Processed": False,
-            "Raw Data": data  # Store raw webhook data for debugging
+            "Processed": False
         }
         
-        # Store the call log
         result = call_logs_collection.insert_one(call_log_entry)
         if result.inserted_id:
             logger.info("✅ Call log successfully stored.")
-            
-            # Process transcript asynchronously
-            logger.info(f"Processing transcript for phone: {user_phone}")
             process_transcript(user_phone, transcript)
-            
             return jsonify({
                 "message": "✅ Call log stored and processed successfully!",
                 "status": "success",
-                "timestamp": timestamp,
-                "phone": user_phone
+                "timestamp": timestamp
             }), 200
         else:
             logger.error("❌ Failed to store call log!")
@@ -507,52 +451,45 @@ def process_transcript(user_phone, transcript):
     """Process transcript and update both Users and CallLogs collections."""
     try:
         logger.info(f"Processing transcript for phone: {user_phone}")
-        
-        # Extract information from transcript
         summary = extract_user_info_from_transcript(transcript)
         
-        # Convert transcript into messages array
-        messages = []
-        for line in transcript.split('\n'):
-            line = line.strip()
-            if line.startswith('AI:'):
-                messages.append({
-                    "role": "bot",
-                    "message": line[3:].strip()
-                })
-            elif line.startswith('User:'):
-                messages.append({
-                    "role": "user",
-                    "message": line[5:].strip()
-                })
-
         # Format Bio as a comprehensive sentence
         bio_parts = summary.get('Bio_Components', {})
-        bio = []
-        
-        if bio_parts.get('Company') != 'Not Mentioned':
-            bio.append(f"Works at {bio_parts.get('Company')}")
+        bio = f"Co-founder at {bio_parts.get('Company', 'their company')} "
         
         if bio_parts.get('Experience') != 'Not Mentioned':
-            bio.append(f"Has {bio_parts.get('Experience')} of experience")
+            bio += f"with {bio_parts.get('Experience')} of experience "
         
         if bio_parts.get('Industry') != 'Not Mentioned':
-            bio.append(f"in the {bio_parts.get('Industry')} industry")
-        
+            bio += f"in the {bio_parts.get('Industry')} industry. "
+        else:
+            bio += ". "
+            
         if bio_parts.get('Background') != 'Not Mentioned':
-            bio.append(f"{bio_parts.get('Background')}")
-        
+            bio += f"{bio_parts.get('Background')}. "
+            
         if bio_parts.get('Achievements') != 'Not Mentioned':
-            bio.append(f"Key achievements include {bio_parts.get('Achievements')}")
-        
+            bio += f"Key achievements include {bio_parts.get('Achievements')}. "
+            
         if bio_parts.get('Current_Status') != 'Not Mentioned':
-            bio.append(f"Currently {bio_parts.get('Current_Status')}")
-        
-        formatted_bio = '. '.join(bio) if bio else "Bio not yet available"
+            bio += f"Currently {bio_parts.get('Current_Status')}."
+
+        # Format conversation messages
+        messages = []
+        for msg in transcript.split('\n'):
+            if msg.startswith('AI: '):
+                messages.append({
+                    "role": "bot",
+                    "message": msg[4:].strip()
+                })
+            elif msg.startswith('User: '):
+                messages.append({
+                    "role": "user",
+                    "message": msg[6:].strip()
+                })
 
         # Find or create user
         user = users_collection.find_one({"Phone": user_phone})
-        
         if not user:
             logger.info(f"👤 Creating new user for phone: {user_phone}")
             next_id = users_collection.count_documents({}) + 1
@@ -562,7 +499,7 @@ def process_transcript(user_phone, transcript):
                 "Email": summary.get("Email", "Not Mentioned"),
                 "Phone": user_phone,
                 "Profession": summary.get("Profession", "Not Mentioned"),
-                "Bio": formatted_bio,
+                "Bio": bio,
                 "Signup Status": "Incomplete",
                 "Calls": [],
                 "Created At": datetime.utcnow().isoformat(),
@@ -571,46 +508,45 @@ def process_transcript(user_phone, transcript):
             result = users_collection.insert_one(user)
             if not result.inserted_id:
                 raise Exception("Failed to create new user")
-        else:
-            # Update existing user if new information is available
+        elif summary.get("Name") != "Not Mentioned" or summary.get("Profession") != "Not Mentioned":
             update_fields = {
                 "Last Updated": datetime.utcnow().isoformat()
             }
-            
             if summary.get("Name") != "Not Mentioned":
                 update_fields["Name"] = summary.get("Name")
-            if summary.get("Email") != "Not Mentioned":
-                update_fields["Email"] = summary.get("Email")
             if summary.get("Profession") != "Not Mentioned":
                 update_fields["Profession"] = summary.get("Profession")
-            if formatted_bio != "Bio not yet available":
-                update_fields["Bio"] = formatted_bio
-
+            update_fields["Bio"] = bio
+            
             if update_fields:
                 users_collection.update_one(
                     {"Phone": user_phone},
                     {"$set": update_fields}
                 )
 
-        # Prepare call log entry
-        call_number = len(user.get("Calls", [])) + 1
-        call_log = {
-            "Call Number": call_number,
+        # Prepare call log entry with rich information
+        user_call_log = {
+            "Call Number": len(user.get("Calls", [])) + 1,
             "Timestamp": datetime.utcnow().isoformat(),
             "Networking Goal": summary.get("Networking Goal", "Not Mentioned"),
             "Meeting Type": summary.get("Meeting Type", "Not Mentioned"),
             "Proposed Meeting Date": summary.get("Proposed Meeting Date", "Not Mentioned"),
             "Proposed Meeting Time": summary.get("Proposed Meeting Time", "Not Mentioned"),
-            "Meeting Status": "Pending",
-            "Call Summary": summary.get("Call Summary", "Not Mentioned"),
-            "Messages": messages
+            "Meeting Status": "Pending Confirmation",
+            "Finalized Meeting Date": None,
+            "Finalized Meeting Time": None,
+            "Meeting Link": None,
+            "Participants Notified": False,
+            "Status": "Ongoing",
+            "Call Summary": summary.get("Call Summary", "No summary available."),
+            "Conversation": messages
         }
 
         # Update Users collection with new call
         users_collection.update_one(
             {"Phone": user_phone},
             {
-                "$push": {"Calls": call_log},
+                "$push": {"Calls": user_call_log},
                 "$set": {"Last Updated": datetime.utcnow().isoformat()}
             }
         )
@@ -618,14 +554,12 @@ def process_transcript(user_phone, transcript):
         # Update CallLogs collection
         call_logs_collection.update_one(
             {"Phone": user_phone, "Transcript Hash": hash_transcript(transcript)},
-            {
-                "$set": {
-                    "Call Summary": summary.get("Call Summary", "Not Mentioned"),
-                    "Messages": messages,
-                    "Processed": True,
-                    "Last Updated": datetime.utcnow().isoformat()
-                }
-            }
+            {"$set": {
+                "Call Summary": summary.get("Call Summary", "No summary available."),
+                "Messages": messages,
+                "Processed": True,
+                "Last Updated": datetime.utcnow().isoformat()
+            }}
         )
 
         logger.info(f"✅ Call processed & User Updated: {user_phone}")
@@ -636,20 +570,13 @@ def process_transcript(user_phone, transcript):
         logger.error(f"Stack trace: {traceback.format_exc()}")
         raise
 
-
-@app.route("/user-context/<phone_number>", methods=["GET", "POST"])
+@app.route("/user-context/<phone_number>", methods=["GET"])
 @limiter.limit("60 per minute", override_defaults=False)
 @cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context(phone_number):
     """Endpoint to fetch user context for Vapi.ai"""
     try:
         logger.info(f"🔍 Received Phone Number: {phone_number}")
-        
-        # Clean up phone number if it starts with $
-        phone_number = phone_number.replace('$', '')
-
-        # Add this new log line here 👇
-        logger.info(f"👉 Cleaned phone number input: {phone_number}")        
         
         # Validate and Standardize Phone Number
         try:
@@ -660,77 +587,78 @@ def get_user_context(phone_number):
         
         logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
 
-        # Query MongoDB for user with multiple phone formats
+        # Query MongoDB for user (Check both with and without "+")
         user = users_collection.find_one({
             "$or": [
                 {"Phone": standardized_phone},
-                {"Phone": standardized_phone.replace("+", "")},
-                {"Phone": phone_number}
+                {"Phone": standardized_phone.replace("+", "")}  # Check without "+"
             ]
         })
 
         if not user:
             logger.info(f"❌ No user found for {standardized_phone}")
-            return jsonify({
-                "exists": False,
-                "user_context": {
-                    "name": "",
-                    "profession": "",
-                    "bio": "",
-                    "total_calls": 0,
-                    "networking_goals": [],
-                    "recent_interactions": []
-                }
-            }), 200
+            return jsonify({"exists": False, "message": "New user detected"}), 200
 
-        # Convert _id to string
+        # Convert _id to string to prevent serialization errors
         user["_id"] = str(user["_id"])
-        
-        # Get last 3 calls
-        recent_calls = user.get("Calls", [])[-3:]
-        
-        # Format response for Vapi
-        response = {
-            "exists": True,
-            "user_context": {
-                "name": user.get("Name", ""),
-                "profession": user.get("Profession", ""),
-                "bio": user.get("Bio", ""),
-                "email": user.get("Email", ""),
-                "nexa_id": user.get("Nexa ID", ""),
-                "signup_status": user.get("Signup Status", ""),
-                "total_calls": len(user.get("Calls", [])),
-                "networking_goals": [
-                    call.get("Networking Goal")
-                    for call in recent_calls
-                    if call.get("Networking Goal") != "Not Mentioned"
-                ],
-                "recent_interactions": [{
-                    "call_number": call.get("Call Number"),
-                    "timestamp": call.get("Timestamp"),
-                    "networking_goal": call.get("Networking Goal"),
-                    "meeting_type": call.get("Meeting Type"),
-                    "meeting_status": call.get("Meeting Status"),
-                    "proposed_date": call.get("Proposed Meeting Date"),
-                    "proposed_time": call.get("Proposed Meeting Time"),
-                    "call_summary": call.get("Call Summary")
-                } for call in recent_calls]
-            }
-        }
-        
-        logger.info(f"✅ Context retrieved for user: {standardized_phone}")
-        logger.debug(f"📝 Response: {json.dumps(response, indent=2)}")
-        
-        return jsonify(response), 200
+
+        return jsonify({"exists": True, "message": "User found", "user": user}), 200
 
     except Exception as e:
         logger.error(f"❌ Error: {str(e)}")
-        logger.error(traceback.format_exc())
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+
+            
+        # Get last 3 calls for recent context
+        recent_calls = user.get("Calls", [])[-3:]
+        
+        # Get networking goals from recent calls
+        networking_goals = [
+            call.get("Networking Goal") 
+            for call in recent_calls 
+            if call.get("Networking Goal") != "Not Mentioned"
+        ]
+        
+        # Format the context response
+        context = {
+            "exists": True,
+            "user_info": {
+                "name": user.get("Name"),
+                "profession": user.get("Profession"),
+                "bio": user.get("Bio"),
+                "email": user.get("Email"),
+                "nexa_id": user.get("Nexa ID"),
+                "signup_status": user.get("Signup Status"),
+                "total_calls": len(user.get("Calls", [])),
+                "networking_goals": networking_goals,
+                "created_at": user.get("Created At"),
+                "last_updated": user.get("Last Updated")
+            },
+            "recent_interactions": [{
+                "call_number": call.get("Call Number"),
+                "timestamp": call.get("Timestamp"),
+                "networking_goal": call.get("Networking Goal"),
+                "meeting_type": call.get("Meeting Type"),
+                "meeting_status": call.get("Meeting Status"),
+                "proposed_date": call.get("Proposed Meeting Date"),
+                "proposed_time": call.get("Proposed Meeting Time"),
+                "call_summary": call.get("Call Summary")
+            } for call in recent_calls],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        logger.info(f"✅ Context retrieved for user: {standardized_phone}")
+        logger.debug(f"📝 Context: {json.dumps(context, indent=2)}")
+        
+        return jsonify(context), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching user context: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return jsonify({
-            "error": "Internal Server Error",
+            "error": "Failed to fetch user context",
             "details": str(e),
-            "exists": False,
-            "user_context": None
+            "timestamp": datetime.utcnow().isoformat()
         }), 500
 
 @app.route("/test-redis", methods=["GET", "POST"])
