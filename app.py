@@ -28,11 +28,16 @@ app = Flask(__name__)
 CORS(app) 
 
 # Configure Redis for rate limiting
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
+redis_url = os.getenv("REDIS_URL")
+if not redis_url:
+    raise ValueError("❌ REDIS_URL is not set in environment variables!")
+
+redis_client = redis.from_url(redis_url)
+
 
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri="redis://localhost:6379"  # Use Redis for storage
+    storage_uri=redis_url  # Use the Redis URL from environment variables
 )
 
 # Initialize cache
@@ -654,6 +659,16 @@ def get_user_context(phone_number):
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
+@app.route("/test-redis", methods=["GET"])
+def test_redis():
+    try:
+        redis_client.set("test_key", "Hello Redis!", ex=10)
+        value = redis_client.get("test_key").decode("utf-8")
+        return jsonify({"status": "success", "message": value}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
