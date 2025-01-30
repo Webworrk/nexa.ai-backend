@@ -181,13 +181,13 @@ def home():
         
     return jsonify(data)
 
-@app.route("/health", methods=["GET"])
+@app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    logger.info("📥 Received /health request")
+
     try:
-        # Test MongoDB connection
         db_status = mongo_client.server_info()
-        return jsonify({
+        response = jsonify({
             "status": "healthy",
             "database": {
                 "status": "connected",
@@ -198,8 +198,13 @@ def health_check():
                 "mongo_uri_configured": bool(os.getenv("MONGO_URI")),
                 "server_time": datetime.utcnow().isoformat()
             }
-        }), 200
+        })
+        response.headers["Content-Type"] = "application/json"
+        logger.info("✅ /health request processed successfully")
+        return response, 200
+
     except Exception as e:
+        logger.error(f"❌ Error in /health: {str(e)}")
         return jsonify({
             "status": "unhealthy",
             "error": {
@@ -211,6 +216,7 @@ def health_check():
                 "server_time": datetime.utcnow().isoformat()
             }
         }), 500
+
 
 def extract_user_info_from_transcript(transcript):
     """Extract user information from transcript using OpenAI"""
