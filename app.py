@@ -734,9 +734,9 @@ def get_user_context():
 def test_redis():
     try:
         if request.method == "POST":
-            # Check if request contains JSON data
-            if not request.is_json:
-                return jsonify({"error": "Request must be JSON", "status": 400}), 400
+            # Clear all Redis keys
+            redis_client.flushall()
+            return jsonify({"status": "success", "message": "Cache cleared"}), 200
 
         # Test Redis connection
         redis_client.set("test_key", "Hello Redis!", ex=10)
@@ -749,6 +749,7 @@ def test_redis():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @app.route("/test-endpoint", methods=["POST"])
 def test_endpoint():
     data = request.get_json()
@@ -756,20 +757,33 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai with Twilio credentials"""
+    """Send User Context Data to Vapi.ai with both phone config and customer info"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Create payload with Twilio requirements
+    # Get user info
+    user_info = user_data.get("user_info", {})
+
+    # Create payload with both phone config and customer info
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "twilioPhoneNumber": "+18454796197",  # Your Twilio phone number
-            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
-            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN")
+            "twilioPhoneNumber": "+18454796197",
+            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
+            "twilioAuthToken": "a817e4b98d1635b4ca670a828a2171be"
+        },
+        "customer": {
+            "name": user_info.get("name", ""),
+            "data": {
+                "profession": user_info.get("profession"),
+                "bio": user_info.get("bio"),
+                "nexa_id": user_info.get("nexa_id"),
+                "signup_status": user_info.get("signup_status"),
+                "total_calls": user_info.get("total_calls")
+            }
         }
     }
 
