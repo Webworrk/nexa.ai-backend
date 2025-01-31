@@ -757,7 +757,6 @@ def test_endpoint():
 
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
-
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
@@ -769,38 +768,33 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None
 
-    # Prepare the user data
+    # Extract user info safely
     user_info = user_data.get("user_info", {})
-    recent_calls = user_data.get("recent_interactions", [])
-    last_three_calls = recent_calls[-3:] if recent_calls else []
+    recent_calls = user_data.get("recent_interactions", [])[-3:]
 
-    # Create a simplified payload structure
+    # Create minimal payload with just required fields
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "customerId": str(phone_number),
-            "metadata": {
-                "name": user_info.get("name"),
-                "profession": user_info.get("profession"),
-                "bio": user_info.get("bio"),
-                "signup_status": user_info.get("signup_status"),
-                "nexa_id": user_info.get("nexa_id"),
-                "networking_goals": user_info.get("networking_goals", []),
-                "total_calls": user_info.get("total_calls", 0),
-                "recent_calls": [
-                    {
-                        "call_number": call.get("call_number"),
-                        "timestamp": call.get("timestamp"),
-                        "networking_goal": call.get("networking_goal"),
-                        "meeting_type": call.get("meeting_type"),
-                        "meeting_status": call.get("meeting_status"),
-                        "proposed_date": call.get("proposed_date"),
-                        "proposed_time": call.get("proposed_time"),
-                        "call_summary": call.get("call_summary")
-                    }
-                    for call in last_three_calls
-                ]
-            }
+            "name": user_info.get("name", ""),
+            "phone": phone_number
+        },
+        "variables": {  # Using variables instead of metadata
+            "bio": user_info.get("bio", ""),
+            "profession": user_info.get("profession", ""),
+            "nexa_id": user_info.get("nexa_id", ""),
+            "signup_status": user_info.get("signup_status", ""),
+            "total_calls": user_info.get("total_calls", 0),
+            "networking_goals": user_info.get("networking_goals", []),
+            "recent_calls": [
+                {
+                    "number": call.get("call_number"),
+                    "time": call.get("timestamp"),
+                    "goal": call.get("networking_goal"),
+                    "summary": call.get("call_summary")
+                }
+                for call in recent_calls if call
+            ]
         }
     }
 
@@ -808,16 +802,24 @@ def send_data_to_vapi(phone_number, user_data):
 
     try:
         response = requests.post(vapi_url, json=vapi_payload, headers=headers, timeout=30)
+        response_text = response.text
 
         if response.status_code != 200:
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
+            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response_text}")
             return None
 
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response_text}")
         return response.json()
 
+    except requests.Timeout:
+        logger.error("❌ Request to Vapi timed out after 30 seconds")
+        return None
+    except requests.RequestException as e:
+        logger.error(f"❌ Network error when sending to Vapi: {str(e)}")
+        return None
     except Exception as e:
-        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Unexpected error when sending to Vapi: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return None
 
 
