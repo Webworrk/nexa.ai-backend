@@ -796,11 +796,11 @@ def send_data_to_vapi(phone_number, user_data):
         ]
     }
 
-    # ✅ Final Payload
+    # ✅ Final Payload - Correcting `phoneNumber`
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": phone_number  # ✅ Ensure phone number is always included
+            "phoneNumber": phone_number  # ✅ This was previously incorrect
         },
         "metadata": metadata  # ✅ Store all user info in metadata instead
     }
