@@ -757,7 +757,7 @@ def test_endpoint():
 def send_data_to_vapi(user_data):
     """Send user data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/v1/call/phone"  # ✅ Corrected Vapi API URL
+    vapi_url = "https://internal-api.aws-us-west-2.backend-production1.vapi.ai:10443/call"  # ✅ Correct URL
 
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure your API Key is correct
