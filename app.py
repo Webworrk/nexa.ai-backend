@@ -17,7 +17,6 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 from pymongo.errors import ServerSelectionTimeoutError
 import time
-from requests.exceptions import RequestException
 
 # Configure logging
 logging.basicConfig(
@@ -720,7 +719,7 @@ def get_user_context():
         logger.info(f"🚀 Final User Context Prepared: {json.dumps(context, indent=2, default=str)}")
 
         # ✅ Send Data to Vapi
-        send_data_to_vapi(user)
+        send_data_to_vapi(user_phone, context)
 
         return jsonify(context), 200
 
@@ -735,9 +734,9 @@ def get_user_context():
 def test_redis():
     try:
         if request.method == "POST":
-            # Clear all Redis keys
-            redis_client.flushall()
-            return jsonify({"status": "success", "message": "Cache cleared"}), 200
+            # Check if request contains JSON data
+            if not request.is_json:
+                return jsonify({"error": "Request must be JSON", "status": 400}), 400
 
         # Test Redis connection
         redis_client.set("test_key", "Hello Redis!", ex=10)
@@ -750,74 +749,76 @@ def test_redis():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @app.route("/test-endpoint", methods=["POST"])
 def test_endpoint():
     data = request.get_json()
     return jsonify({"message": "Received data", "data": data}), 200
 
 
-@app.route("/clear-cache", methods=["POST"])
-def clear_cache():
-    """Clear both Redis and Flask-Cache caches"""
-    try:
-        # Clear Redis cache
-        redis_client.flushall()
-        
-        # Clear Flask-Caching cache
-        cache.clear()
-        
-        return jsonify({
-            "status": "success",
-            "message": "All caches cleared successfully",
-            "timestamp": datetime.utcnow().isoformat()
-        }), 200
-    except Exception as e:
-        logger.error(f"❌ Error clearing cache: {str(e)}")
-        return jsonify({
-            "error": "Failed to clear cache",
-            "details": str(e)
-        }), 500
+def send_data_to_vapi(phone_number, user_data):
+    """Send User Context Data to Vapi.ai"""
 
-def send_data_to_vapi(user_data):
-    """Send user data to Vapi.ai"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
     }
-    
-    # Check if user_data is a dictionary containing user_info or just user document
-    phone = (user_data.get("user_info", {}).get("phone") or 
-             user_data.get("Phone") or 
-             user_data.get("phone"))
-    
-    payload = {
+
+    # ✅ Validate Phone Number
+    if not phone_number:
+        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
+        return None  # Stop execution if phone number is missing
+
+    # ✅ Replace "phoneNumber" with "phoneNumberId"
+    vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "name": user_data.get("Name", ""),
-            "number": phone
+            "phoneNumberId": phone_number  # ✅ Use "phoneNumberId" instead of "phoneNumber"
         },
-        "connection": {
-            "type": "twilio",
-            "accountSid": os.getenv("TWILIO_ACCOUNT_SID"),
-            "authToken": os.getenv("TWILIO_AUTH_TOKEN")
+        "metadata": {  # ✅ Store all user info in metadata
+            "name": user_data["user_info"].get("name"),
+            "profession": user_data["user_info"].get("profession"),
+            "bio": user_data["user_info"].get("bio"),
+            "signup_status": user_data["user_info"].get("signup_status"),
+            "nexa_id": user_data["user_info"].get("nexa_id"),
+            "networking_goals": user_data["user_info"].get("networking_goals"),
+            "total_calls": user_data["user_info"].get("total_calls"),
+            "last_calls": [
+                {
+                    "call_number": call.get("call_number"),
+                    "timestamp": call.get("timestamp"),
+                    "networking_goal": call.get("networking_goal"),
+                    "meeting_type": call.get("meeting_type"),
+                    "meeting_status": call.get("meeting_status"),
+                    "proposed_date": call.get("proposed_date"),
+                    "proposed_time": call.get("proposed_time"),
+                    "call_summary": call.get("call_summary")
+                }
+                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
+            ]
         }
     }
 
-    logger.info(f"📤 Sending to Vapi: {json.dumps(payload, indent=2)}")
+    logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
 
     try:
-        response = requests.post(vapi_url, json=payload, headers=headers, timeout=30)
-        if response.status_code not in [200, 201]:
-            logger.error(f"❌ Vapi Error {response.status_code}: {response.text}")
+        response = requests.post(vapi_url, json=vapi_payload, headers=headers)
+
+        # ✅ Check Response Status
+        if response.status_code != 200:
+            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
-            
-        logger.info(f"✅ Vapi Success: {response.text}")
+
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
         return response.json()
+
     except Exception as e:
-        logger.error(f"❌ Vapi Error: {str(e)}")
+        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
+
+
+
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
     port = int(os.environ.get("PORT", 5000))
