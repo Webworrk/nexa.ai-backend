@@ -780,45 +780,33 @@ def clear_cache():
         }), 500
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai with minimal required fields"""
+    """Send User Context Data to Vapi.ai"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Get user info
     user_info = user_data.get("user_info", {})
-
-    # Create minimal payload with just required fields
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "name": user_info.get("name", "")  # Only send name in customer object
-        },
-        "number": phone_number  # Phone number at root level
+            "name": user_info.get("name", ""),
+            "number": phone_number  # Move number inside customer object
+        }
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
 
     try:
         response = requests.post(vapi_url, json=vapi_payload, headers=headers, timeout=30)
-        response_text = response.text
-
         if response.status_code != 200:
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response_text}")
+            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             logger.error(f"Failed request payload: {json.dumps(vapi_payload, indent=2)}")
             return None
 
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response_text}")
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.text}")
         return response.json()
-
-    except requests.Timeout:
-        logger.error("❌ Request to Vapi timed out after 30 seconds")
-        return None
-    except requests.RequestException as e:
-        logger.error(f"❌ Network error when sending to Vapi: {str(e)}")
-        return None
     except Exception as e:
         logger.error(f"❌ Error sending data to Vapi: {str(e)}")
         return None
