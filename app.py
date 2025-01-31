@@ -570,21 +570,36 @@ def process_transcript(user_phone, transcript):
         logger.error(f"Stack trace: {traceback.format_exc()}")
         raise
 
-@app.route("/user-context/<phone_number>", methods=["GET"])
+@app.route("/user-context", methods=["GET", "POST"])
 @limiter.limit("60 per minute", override_defaults=False)
 @cache.memoize(timeout=300)  # Cache for 5 minutes
-def get_user_context(phone_number):
+def get_user_context():
     """Endpoint to fetch user context for Vapi.ai"""
     try:
-        logger.info(f"🔍 Received Phone Number: {phone_number}")
-        
-        # Validate and Standardize Phone Number
+        # Log request type and headers
+        logger.info(f"🔍 Received Request: {request.method}, Headers: {request.headers}")
+
+        # Extract phone number from GET or POST
+        if request.method == "GET":
+            phone_number = request.args.get("phone")  # Extract from URL parameter
+        elif request.method == "POST":
+            data = request.get_json()
+            phone_number = data.get("phone")  # Extract from JSON body
+
+        # Check if phone_number is missing
+        if not phone_number:
+            logger.error("❌ Missing phone number in request")
+            return jsonify({"error": "Missing phone number"}), 400
+
+        logger.info(f"📞 Received Phone Number: {phone_number}")
+
+        # Validate & Standardize Phone Number
         try:
             standardized_phone = standardize_phone_number(phone_number)
         except ValueError as ve:
             logger.error(f"❌ Invalid Phone Number Format: {phone_number} - {str(ve)}")
             return jsonify({"error": "Invalid phone format", "details": str(ve)}), 400
-        
+
         logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
 
         # Query MongoDB for user (Check both with and without "+")
@@ -596,19 +611,12 @@ def get_user_context(phone_number):
         })
 
         if not user:
-            logger.info(f"❌ No user found for {standardized_phone}")
+            logger.warning(f"⚠️ No user found for {standardized_phone}")
             return jsonify({"exists": False, "message": "New user detected"}), 200
 
         # Convert _id to string to prevent serialization errors
         user["_id"] = str(user["_id"])
 
-        return jsonify({"exists": True, "message": "User found", "user": user}), 200
-
-    except Exception as e:
-        logger.error(f"❌ Error: {str(e)}")
-        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
-
-            
         # Get last 3 calls for recent context
         recent_calls = user.get("Calls", [])[-3:]
         
@@ -651,7 +659,7 @@ def get_user_context(phone_number):
         logger.debug(f"📝 Context: {json.dumps(context, indent=2)}")
         
         return jsonify(context), 200
-        
+
     except Exception as e:
         logger.error(f"❌ Error fetching user context: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
@@ -660,6 +668,7 @@ def get_user_context(phone_number):
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
 
 @app.route("/test-redis", methods=["GET", "POST"])
 def test_redis():
