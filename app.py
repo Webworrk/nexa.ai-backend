@@ -84,7 +84,7 @@ def validate_vapi_request(request):
         logger.error("❌ Missing Vapi secret token in query string!")
         return jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
 
-    if token.strip() != VAPI_SECRET_TOKEN.strip():
+    if token and token.lower() == VAPI_SECRET_TOKEN.lower():
         logger.error("❌ Invalid Vapi secret token provided!")
         return jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
 
@@ -114,7 +114,7 @@ def connect_to_mongo(retries=5, delay=2):
 
 # Call the function and get the client
 mongo_client = connect_to_mongo()
-db = mongo_client["Nexa"] if mongo_client else None  # ✅ Fix: Ensure direct connection to "Nexa"
+db = mongo_client["Nexa"] if mongo_client else None
 
 # Collections
 call_logs_collection = db["CallLogs"] if db else None
@@ -169,7 +169,7 @@ def before_request():
     
     # Convert headers to dictionary safely
     try:
-        logger.info(f"Headers: {dict(request.headers)}")
+        logger.info(f"Headers: {json.dumps(headers_dict, indent=2)}")  # Pretty-print headers safely
     except Exception as e:
         logger.warning(f"⚠️ Error logging headers: {str(e)}")
 
@@ -627,7 +627,7 @@ def get_user_context():
         if request.method == "POST":
             # Handle both JSON & Form-Encoded Data
             if request.is_json:
-                data = request.get_json(silent=True) or {}
+                data = request.get_json(force=True, silent=True) or {}
                 phone_number = data.get("phone")
             else:
                 phone_number = request.form.get("phone")  # Fallback for missing JSON
