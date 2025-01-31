@@ -27,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type", "Authorization"]}})
+CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type", "Authorization", "Accept", "X-Requested-With"]}})
 
 # Configure Redis for rate limiting
 redis_url = os.getenv("REDIS_URL")
@@ -76,14 +76,15 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 
 def validate_vapi_request(request):
-    """Validate incoming Vapi.ai requests using Query String (since headers disappear in tools)."""
-    token = request.args.get("secret")
+    """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
+    
+    token = request.args.get("secret")  # Check if token is in URL params
     
     if not token:
-        logger.error("❌ Missing Vapi secret token in request!")
+        logger.error("❌ Missing Vapi secret token in query string!")
         return jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
 
-    if token != VAPI_SECRET_TOKEN:
+    if token.strip() != VAPI_SECRET_TOKEN.strip():
         logger.error("❌ Invalid Vapi secret token provided!")
         return jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
 
@@ -113,15 +114,11 @@ def connect_to_mongo(retries=5, delay=2):
 
 # Call the function and get the client
 mongo_client = connect_to_mongo()
-db = mongo_client.get_database() if mongo_client else None
+db = mongo_client["Nexa"] if mongo_client else None  # ✅ Fix: Ensure direct connection to "Nexa"
 
-# Define collections
-if db:
-    call_logs_collection = db["CallLogs"]
-    users_collection = db["Users"]
-else:
-    logger.critical("❌ No MongoDB connection established. Collections cannot be defined.")
-    raise SystemExit("No MongoDB connection established.")
+# Collections
+call_logs_collection = db["CallLogs"] if db else None
+users_collection = db["Users"] if db else None
 
 
 
@@ -169,11 +166,17 @@ def hash_transcript(transcript):
 def before_request():
     """Log incoming requests, ensure correct headers, and handle HEAD requests."""
     logger.info(f"📥 Incoming Request: {request.method} {request.url}")
-    logger.info(f"Headers: {dict(request.headers)}")
+    
+    # Convert headers to dictionary safely
+    try:
+        logger.info(f"Headers: {dict(request.headers)}")
+    except Exception as e:
+        logger.warning(f"⚠️ Error logging headers: {str(e)}")
 
-    # Handle HEAD requests separately
+    # Handle HEAD requests separately (No body needed in response)
     if request.method == "HEAD":
-        return "", 200  # Properly returning an empty response
+        response = make_response("", 200)
+        return response
 
     # Ensure JSON requests have correct headers
     if request.method in ["POST", "PUT", "PATCH"]:
@@ -184,9 +187,11 @@ def before_request():
     # Log request body if it's JSON, safely
     if request.is_json:
         try:
-            logger.info(f"Body: {request.get_json()}")
+            body = request.get_json(silent=True)  # Prevents errors on empty/non-JSON bodies
+            logger.info(f"Body: {json.dumps(body, indent=2)}")
         except Exception as e:
             logger.warning(f"⚠️ Error parsing JSON body: {str(e)}")
+
 
 
 
@@ -610,18 +615,26 @@ def process_transcript(user_phone, transcript):
 @limiter.limit("60 per minute", override_defaults=False)
 @cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context():
-    """Endpoint to fetch user context for Vapi.ai"""
+    """Fetch user context for Vapi.ai"""
 
     try:
         # Log request type and headers
         logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
 
-        # Extract phone number correctly
-        if request.method == "GET":
-            phone_number = request.args.get("phone")  # GET request (Query String)
-        elif request.method == "POST":
-            data = request.get_json(silent=True) or {}
-            phone_number = data.get("phone")  # POST request (JSON Body)
+        # Extract phone number from GET or POST
+        phone_number = None
+
+        if request.method == "POST":
+            # Handle both JSON & Form-Encoded Data
+            if request.is_json:
+                data = request.get_json(silent=True) or {}
+                phone_number = data.get("phone")
+            else:
+                phone_number = request.form.get("phone")  # Fallback for missing JSON
+
+        # Allow GET as fallback
+        if not phone_number:
+            phone_number = request.args.get("phone")  
 
         # Check if phone_number is missing
         if not phone_number:
@@ -657,14 +670,14 @@ def get_user_context():
         # Get last 3 calls for recent context
         recent_calls = user.get("Calls", [])[-3:]
         
-        # Get networking goals from recent calls
+        # Extract networking goals from recent calls
         networking_goals = [
             call.get("Networking Goal") 
             for call in recent_calls 
-            if call.get("Networking Goal") != "Not Mentioned"
+            if call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
         ]
         
-        # Format the context response
+        # Format the response
         context = {
             "exists": True,
             "user_info": {
