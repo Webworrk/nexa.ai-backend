@@ -577,14 +577,22 @@ def get_user_context():
     """Endpoint to fetch user context for Vapi.ai"""
     try:
         # Log request type and headers
-        logger.info(f"🔍 Received Request: {request.method}, Headers: {request.headers}")
+        logger.info(f"📥 Received Request: {request.method}, Headers: {request.headers}")
 
         # Extract phone number from GET or POST
+        phone_number = None
         if request.method == "GET":
             phone_number = request.args.get("phone")  # Extract from URL parameter
         elif request.method == "POST":
-            data = request.get_json()
-            phone_number = data.get("phone")  # Extract from JSON body
+            try:
+                data = request.get_json()
+                if data:
+                    phone_number = data.get("phone")  # Extract from JSON body
+                else:
+                    logger.error("❌ Empty JSON body received")
+            except Exception as e:
+                logger.error(f"❌ Error parsing JSON body: {str(e)}")
+                return jsonify({"error": "Invalid JSON format"}), 400
 
         # Check if phone_number is missing
         if not phone_number:
