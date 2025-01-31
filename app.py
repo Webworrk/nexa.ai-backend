@@ -654,15 +654,15 @@ def get_user_context():
 
         logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
 
-        # ✅ Query MongoDB for user (Check both with and without "+")
+        # ✅ Query MongoDB for user with multiple number formats
         user = users_collection.find_one({
             "$or": [
                 {"Phone": standardized_phone},
-                {"Phone": standardized_phone.replace("+", "")}  # Check without "+"
+                {"Phone": standardized_phone.replace("+", "")},
+                {"Phone": standardized_phone[-10:]}  # ✅ Check last 10 digits
             ]
         })
 
-        # ✅ ADD THIS DEBUG LOG HERE
         logger.info(f"🔍 User Data Retrieved from MongoDB: {json.dumps(user, indent=2, default=str)}")
 
         # ✅ Handle New Users
@@ -670,20 +670,17 @@ def get_user_context():
             logger.warning(f"⚠️ No user found for {standardized_phone}")
             return jsonify({"exists": False, "message": "New user detected"}), 200
 
-        # ✅ Convert `_id` to string safely
-        user["_id"] = str(user["_id"])
+        user["_id"] = str(user["_id"])  # ✅ Convert _id safely
 
         # ✅ Fetch recent calls safely
         recent_calls = user.get("Calls", [])
         if not isinstance(recent_calls, list):
             recent_calls = []
 
-        # ✅ Extract Networking Goals from recent calls
         networking_goals = [
-            call.get("Networking Goal") 
-            for call in recent_calls 
-            if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
+            call.get("Networking Goal") for call in recent_calls if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
         ]
+
 
         # ✅ Step 11: Prepare the Final Response
         context = {
@@ -709,24 +706,19 @@ def get_user_context():
                 "proposed_date": call.get("Proposed Meeting Date"),
                 "proposed_time": call.get("Proposed Meeting Time"),
                 "call_summary": call.get("Call Summary")
-            } for call in recent_calls[-3:]],  # ✅ Limit to last 3 calls
+            } for call in recent_calls],  # ✅ Send ALL calls
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        # ✅ SEND USER DATA TO VAPI
-        send_data_to_vapi(user)  # 🔹 Add this line
 
-        logger.info(f"✅ Context retrieved for user: {standardized_phone}")
+        logger.info(f"🚀 Final User Context Sent to Vapi: {json.dumps(context, indent=2, default=str)}")
+        send_data_to_vapi(context)  
+
         return jsonify(context), 200
 
     except Exception as e:
         logger.error(f"❌ Error fetching user context: {str(e)}")
-        return jsonify({
-            "error": "Failed to fetch user context",
-            "details": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }), 500
-
+        return jsonify({"error": "Failed to fetch user context", "details": str(e)}), 500
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
