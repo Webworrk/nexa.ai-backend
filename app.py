@@ -760,22 +760,22 @@ def send_data_to_vapi(phone_number, user_data):
 
     vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
+        "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # ✅ Validate Phone Number
+    # Validate Phone Number
     if not phone_number:
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None  # Stop execution if phone number is missing
+        return None
 
-    # ✅ Replace "phoneNumber" with "phoneNumberId"
+    # Create payload with correct structure
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "phoneNumberId": phone_number  # ✅ Use "phoneNumberId" instead of "phoneNumber"
+            "number": phone_number  # Changed from phoneNumberId to number
         },
-        "metadata": {  # ✅ Store all user info in metadata
+        "metadata": {
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
             "bio": user_data["user_info"].get("bio"),
@@ -794,7 +794,7 @@ def send_data_to_vapi(phone_number, user_data):
                     "proposed_time": call.get("proposed_time"),
                     "call_summary": call.get("call_summary")
                 }
-                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
+                for call in user_data.get("recent_interactions", [])[-3:]
             ]
         }
     }
@@ -804,7 +804,6 @@ def send_data_to_vapi(phone_number, user_data):
     try:
         response = requests.post(vapi_url, json=vapi_payload, headers=headers)
 
-        # ✅ Check Response Status
         if response.status_code != 200:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
