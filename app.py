@@ -755,12 +755,18 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
+import requests
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"
+    vapi_url = "https://api.vapi.ai/v1/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
     }
 
@@ -772,10 +778,10 @@ def send_data_to_vapi(phone_number, user_data):
     # ✅ Prepare Data for Vapi
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": {  # ✅ Send phoneNumber as an object
-            "number": phone_number
+        "customer": {
+            "phoneNumber": phone_number  # ✅ Use correct format
         },
-        "metadata": {  # ✅ Store all user info in metadata instead
+        "metadata": {  # ✅ Store all user info in metadata
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
             "bio": user_data["user_info"].get("bio"),
@@ -815,6 +821,7 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 
