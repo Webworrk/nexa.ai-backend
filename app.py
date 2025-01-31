@@ -772,7 +772,9 @@ def send_data_to_vapi(phone_number, user_data):
     # ✅ Prepare Data for Vapi
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": phone_number,  # ✅ Move `phoneNumber` outside `customer`
+        "phoneNumber": {  # ✅ Send phoneNumber as an object
+            "number": phone_number
+        },
         "metadata": {  # ✅ Store all user info in metadata instead
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
@@ -813,6 +815,7 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 
