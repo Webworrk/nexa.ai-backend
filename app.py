@@ -71,9 +71,10 @@ VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 
 def validate_vapi_request(request):
     """Validate incoming Vapi.ai requests"""
-    token = request.headers.get('x-vapi-secret')
+    token = request.args.get("secret")  # Use query parameter instead of headers
     if not token or token != VAPI_SECRET_TOKEN:
         raise ValueError("Invalid or missing Vapi secret token")
+
 
 # Connect to MongoDB
 try:
