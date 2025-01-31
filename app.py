@@ -102,12 +102,13 @@ def connect_to_mongo(retries=5, delay=2):
 mongo_client = connect_to_mongo()
 db = mongo_client["Nexa"] if mongo_client is not None else None
 
-if db is not None:
+if db is not None:  # ✅ Ensure db is not None
     call_logs_collection = db["CallLogs"]
     users_collection = db["Users"]
 else:
     logger.error("❌ Database connection failed")
     raise SystemExit("MongoDB Connection Failed")
+
 
 
 
@@ -615,17 +616,16 @@ def process_transcript(user_phone, transcript):
 def get_user_context():
     """Fetch user context for Vapi.ai"""
 
-    # ✅ Step 1: Validate Vapi Request FIRST
+    # ✅ Validate Vapi request FIRST
     is_valid, error_response = validate_vapi_request(request)
     if not is_valid:
-        logger.error("❌ Unauthorized Vapi Request")
-        return error_response  # Return the actual error response
+        return error_response  # ✅ Fix: Return the actual error response
 
     try:
-        # ✅ Step 2: Log Request Details
+        # ✅ Log Request Details
         logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
 
-        # ✅ Step 3: Extract phone number safely from GET or POST
+        # ✅ Extract phone number safely from GET or POST
         phone_number = None
 
         if request.method == "POST":
@@ -639,14 +639,14 @@ def get_user_context():
         else:
             phone_number = request.args.get("phone")  # GET request
 
-        # ✅ Step 4: Check if phone_number is missing
+        # ✅ Check if phone_number is missing
         if not phone_number:
             logger.error("❌ Missing phone number in request")
             return jsonify({"error": "Missing phone number"}), 400
 
         logger.info(f"📞 Received Phone Number: {phone_number}")
 
-        # ✅ Step 5: Validate & Standardize Phone Number
+        # ✅ Validate & Standardize Phone Number
         try:
             standardized_phone = standardize_phone_number(phone_number)
         except ValueError as ve:
@@ -655,7 +655,7 @@ def get_user_context():
 
         logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
 
-        # ✅ Step 6: Query MongoDB for user (Check both with and without "+")
+        # ✅ Query MongoDB for user (Check both with and without "+")
         user = users_collection.find_one({
             "$or": [
                 {"Phone": standardized_phone},
@@ -663,27 +663,27 @@ def get_user_context():
             ]
         })
 
-        # ✅ Step 7: Handle New Users
+        # ✅ Handle New Users
         if not user:
             logger.warning(f"⚠️ No user found for {standardized_phone}")
             return jsonify({"exists": False, "message": "New user detected"}), 200
 
-        # ✅ Step 8: Convert `_id` to string safely
+        # ✅ Convert `_id` to string safely
         user["_id"] = str(user["_id"])
 
-        # ✅ Step 9: Fetch recent calls safely
+        # ✅ Fetch recent calls safely
         recent_calls = user.get("Calls", [])
         if not isinstance(recent_calls, list):
             recent_calls = []
 
-        # ✅ Step 10: Extract Networking Goals from recent calls
+        # ✅ Extract Networking Goals from recent calls
         networking_goals = [
             call.get("Networking Goal") 
             for call in recent_calls 
             if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
         ]
 
-        # ✅ Step 11: Prepare the Final Response
+        # ✅ Prepare the Final Response
         context = {
             "exists": True,
             "user_info": {
@@ -721,6 +721,7 @@ def get_user_context():
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
