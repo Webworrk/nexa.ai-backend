@@ -756,17 +756,17 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai with only required fields"""
+    """Send User Context Data to Vapi.ai"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Create payload with only required fields
+    # Create payload with correct phone number field
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumberId": phone_number  # Use the phone number at root level
+        "phoneNumber": phone_number  # Using phoneNumber instead of phoneNumberId
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
