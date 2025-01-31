@@ -575,22 +575,19 @@ def process_transcript(user_phone, transcript):
 @cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context():
     """Endpoint to fetch user context for Vapi.ai"""
+
     try:
         # Log request type and headers
-        logger.info(f"📥 Received Request: {request.method}, Headers: {request.headers}")
+        logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
 
-        phone_number = None  # Default value
-
-        # Extract phone number from GET or POST
+        # Extract phone number based on method
         if request.method == "GET":
             phone_number = request.args.get("phone")
         elif request.method == "POST":
-            try:
-                data = request.get_json(silent=True) or {}  # Allow empty JSON
-                phone_number = data.get("phone")
-            except Exception as e:
-                logger.error(f"❌ Error parsing JSON body: {str(e)}")
-                return jsonify({"error": "Invalid JSON format"}), 400
+            if not request.is_json:
+                return jsonify({"error": "Invalid JSON request"}), 400
+            data = request.get_json(silent=True) or {}
+            phone_number = data.get("phone")
 
         # Check if phone_number is missing
         if not phone_number:
@@ -625,14 +622,14 @@ def get_user_context():
 
         # Get last 3 calls for recent context
         recent_calls = user.get("Calls", [])[-3:]
-
+        
         # Get networking goals from recent calls
         networking_goals = [
-            call.get("Networking Goal")
-            for call in recent_calls
+            call.get("Networking Goal") 
+            for call in recent_calls 
             if call.get("Networking Goal") != "Not Mentioned"
         ]
-
+        
         # Format the context response
         context = {
             "exists": True,
@@ -660,22 +657,17 @@ def get_user_context():
             } for call in recent_calls],
             "timestamp": datetime.utcnow().isoformat()
         }
-
+        
         logger.info(f"✅ Context retrieved for user: {standardized_phone}")
-        logger.debug(f"📝 Context: {json.dumps(context, indent=2)}")
-
         return jsonify(context), 200
 
     except Exception as e:
         logger.error(f"❌ Error fetching user context: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
         return jsonify({
             "error": "Failed to fetch user context",
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
-
-
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
