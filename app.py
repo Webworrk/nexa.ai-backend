@@ -412,6 +412,7 @@ def sync_vapi_calllogs():
             "details": str(e)
         }), 500
 
+
 @app.route("/vapi-webhook", methods=["POST"])
 @limiter.limit("30 per minute")
 def vapi_webhook():
@@ -609,6 +610,8 @@ def process_transcript(user_phone, transcript):
         logger.error(f"Stack trace: {traceback.format_exc()}")
         return None  # Return instead of raising an exception
 
+
+
 @app.route("/user-context", methods=["GET", "POST"])
 @limiter.limit("60 per minute", override_defaults=False)
 @cache.memoize(timeout=300)  # Cache for 5 minutes
@@ -752,11 +755,10 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
-
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct API URL
+    vapi_url = "https://api.vapi.ai/v1/call"  # ✅ Correct API URL
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
@@ -819,6 +821,7 @@ def send_data_to_vapi(phone_number, user_data):
     except requests.exceptions.RequestException as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 if __name__ == "__main__":
