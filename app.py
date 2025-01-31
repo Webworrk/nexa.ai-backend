@@ -769,38 +769,45 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None
 
-    # Create a simpler payload structure
+    # Prepare the user data
+    user_info = user_data.get("user_info", {})
+    recent_calls = user_data.get("recent_interactions", [])
+    last_three_calls = recent_calls[-3:] if recent_calls else []
+
+    # Create a simplified payload structure
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "customer": phone_number,  # Just send the phone number directly
-        "metadata": {
-            "name": user_data["user_info"].get("name"),
-            "profession": user_data["user_info"].get("profession"),
-            "bio": user_data["user_info"].get("bio"),
-            "signup_status": user_data["user_info"].get("signup_status"),
-            "nexa_id": user_data["user_info"].get("nexa_id"),
-            "networking_goals": user_data["user_info"].get("networking_goals"),
-            "total_calls": user_data["user_info"].get("total_calls"),
-            "last_calls": [
-                {
-                    "call_number": call.get("call_number"),
-                    "timestamp": call.get("timestamp"),
-                    "networking_goal": call.get("networking_goal"),
-                    "meeting_type": call.get("meeting_type"),
-                    "meeting_status": call.get("meeting_status"),
-                    "proposed_date": call.get("proposed_date"),
-                    "proposed_time": call.get("proposed_time"),
-                    "call_summary": call.get("call_summary")
-                }
-                for call in user_data.get("recent_interactions", [])[-3:]
-            ]
+        "customer": {
+            "customerId": str(phone_number),
+            "metadata": {
+                "name": user_info.get("name"),
+                "profession": user_info.get("profession"),
+                "bio": user_info.get("bio"),
+                "signup_status": user_info.get("signup_status"),
+                "nexa_id": user_info.get("nexa_id"),
+                "networking_goals": user_info.get("networking_goals", []),
+                "total_calls": user_info.get("total_calls", 0),
+                "recent_calls": [
+                    {
+                        "call_number": call.get("call_number"),
+                        "timestamp": call.get("timestamp"),
+                        "networking_goal": call.get("networking_goal"),
+                        "meeting_type": call.get("meeting_type"),
+                        "meeting_status": call.get("meeting_status"),
+                        "proposed_date": call.get("proposed_date"),
+                        "proposed_time": call.get("proposed_time"),
+                        "call_summary": call.get("call_summary")
+                    }
+                    for call in last_three_calls
+                ]
+            }
         }
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
 
     try:
-        response = requests.post(vapi_url, json=vapi_payload, headers=headers)
+        response = requests.post(vapi_url, json=vapi_payload, headers=headers, timeout=30)
 
         if response.status_code != 200:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
