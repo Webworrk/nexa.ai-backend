@@ -782,34 +782,37 @@ def clear_cache():
 def send_data_to_vapi(phone_number, user_data):
     """Send user data to Vapi.ai"""
     try:
+        payload = {
+            "assistantId": VAPI_ASSISTANT_ID,
+            "phoneNumber": "+18454796197",  # Use phoneNumber instead of phoneNumberId
+            "customer": {
+                "name": user_data.get("user_info", {}).get("name", ""),
+                "number": phone_number
+            }
+        }
+        
+        logger.info(f"📤 Sending payload to Vapi: {json.dumps(payload, indent=2)}")
+        
         response = requests.post(
             "https://api.vapi.ai/call",
             headers={
                 "Authorization": f"Bearer {VAPI_API_KEY}",
                 "Content-Type": "application/json"
             },
-            json={
-                "assistantId": VAPI_ASSISTANT_ID,
-                "customer": {
-                    "name": user_data.get("user_info", {}).get("name", ""),
-                    "number": phone_number
-                },
-                "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65"
-            },
+            json=payload,
             timeout=30
         )
         
-        response.raise_for_status()
-        logger.info(f"✅ Vapi Response: {response.text}")
+        if response.status_code != 200:
+            logger.error(f"❌ Vapi API Error {response.status_code}: {response.text}")
+            return None
+            
+        logger.info(f"✅ Vapi Success: {response.text}")
         return response.json()
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Vapi API Error: {str(e)}")
-        return None
     except Exception as e:
-        logger.error(f"❌ Unexpected Error: {str(e)}")
+        logger.error(f"❌ Error: {str(e)} | {getattr(e, 'response', {}).get('text', '')}")
         return None
-
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
