@@ -614,7 +614,7 @@ def get_user_context():
     is_valid, error_response = validate_vapi_request(request)
     if not is_valid:
         logger.error("❌ Unauthorized Vapi Request")
-        return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+        return error_response  # Return the actual error response
 
     try:
         # ✅ Step 2: Log Request Details
