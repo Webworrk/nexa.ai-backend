@@ -753,26 +753,22 @@ def test_endpoint():
     data = request.get_json()
     return jsonify({"message": "Received data", "data": data}), 200
 
-import requests
-import json
-import os
 
 def send_data_to_vapi(user_data):
     """Send user data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"  # Updated Vapi API URL
+    vapi_url = "https://api.vapi.ai/call"  # ✅ Corrected Vapi API URL
 
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",  # Ensure your API key is correct
+        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure your API Key is correct
         "Content-Type": "application/json"
     }
 
+    # ✅ **Updated Payload: Removed 'assistant_id' and 'phone_number_id'**
     payload = {
-        "assistant_id": "271c3f96-df20-4c0e-86bd-71cb4be60616",  # Your Assistant ID
         "customer": {
-            "number": user_data.get("Phone")
-        },
-        "phone_number_id": "fe33c516-4181-4296-a4d7-b744db7b1d65"  # Your Phone Number ID
+            "number": user_data.get("Phone")  # Only passing phone number
+        }
     }
 
     # Debug Log Before Sending Request
@@ -792,7 +788,6 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 
