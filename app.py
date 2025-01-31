@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import redis
@@ -14,7 +14,6 @@ import traceback
 import logging
 from openai import OpenAI
 from flask_cors import CORS
-from flask import make_response
 from werkzeug.exceptions import HTTPException
 from pymongo.errors import ServerSelectionTimeoutError
 import time
@@ -36,13 +35,11 @@ if not redis_url:
 
 redis_client = redis.from_url(redis_url)
 
-
 limiter = Limiter(
     get_remote_address,
-    storage_uri=redis_url  # Use the Redis URL from environment variables
+    app=app,  # Attach to the app instance
+    storage_uri=redis_url
 )
-limiter.init_app(app)
-
 
 # Initialize cache
 cache = Cache(app, config={
@@ -51,46 +48,29 @@ cache = Cache(app, config={
     'CACHE_DEFAULT_TIMEOUT': 300
 })
 
-
 # Load environment variables
 load_dotenv()
 
-# Constants and Configuration
-TIMEOUT_SECONDS = 25
-REQUIRED_ENV_VARS = {
-    "MONGO_URI": "MongoDB connection string",
-    "OPENAI_API_KEY": "OpenAI API key",
-    "VAPI_API_KEY": "Vapi.ai API key",
-    "VAPI_ASSISTANT_ID": "Vapi.ai Assistant ID",
-    "VAPI_SECRET_TOKEN": "Vapi.ai Secret Token"
-}
-
-# Validate environment variables
-for var, description in REQUIRED_ENV_VARS.items():
+# Validate required environment variables
+REQUIRED_ENV_VARS = ["MONGO_URI", "OPENAI_API_KEY", "VAPI_API_KEY", "VAPI_ASSISTANT_ID", "VAPI_SECRET_TOKEN"]
+for var in REQUIRED_ENV_VARS:
     if not os.getenv(var):
-        raise ValueError(f"❌ Missing required environment variable: {var} ({description})")
+        raise ValueError(f"❌ Missing required environment variable: {var}")
 
-# Initialize global variables
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
 
 def validate_vapi_request(request):
     """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
-    
-    token = request.args.get("secret")  # Check if token is in URL params
-    
+    token = request.args.get("secret")  # Extract secret token from query params
     if not token:
         logger.error("❌ Missing Vapi secret token in query string!")
         return jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
-
-    if token and token.lower() == VAPI_SECRET_TOKEN.lower():
+    if token and token.lower() != VAPI_SECRET_TOKEN.lower():
         logger.error("❌ Invalid Vapi secret token provided!")
         return jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
-
-
-
-MONGO_URI = os.getenv("MONGO_URI")
 
 def connect_to_mongo(retries=5, delay=2):
     """Attempt to connect to MongoDB with retry logic."""
@@ -106,20 +86,17 @@ def connect_to_mongo(retries=5, delay=2):
             delay *= 2  # Exponential backoff
         except Exception as e:
             logger.error(f"❌ MongoDB Connection Failed: {str(e)}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
-            return None  # Exit if a different error occurs
+            return None
 
     logger.critical("❌ All MongoDB connection attempts failed. Exiting...")
     raise SystemExit("MongoDB Connection Failed")
 
-# Call the function and get the client
+# Connect to MongoDB
 mongo_client = connect_to_mongo()
 db = mongo_client["Nexa"] if mongo_client else None
 
-# Collections
 call_logs_collection = db["CallLogs"] if db else None
 users_collection = db["Users"] if db else None
-
 
 
 # Initialize OpenAI client
@@ -169,7 +146,7 @@ def before_request():
     
     # Convert headers to dictionary safely
     try:
-        logger.info(f"Headers: {json.dumps(headers_dict, indent=2)}")  # Pretty-print headers safely
+        logger.info(f"Headers: {json.dumps(dict(request.headers), indent=2)}")
     except Exception as e:
         logger.warning(f"⚠️ Error logging headers: {str(e)}")
 
@@ -191,8 +168,6 @@ def before_request():
             logger.info(f"Body: {json.dumps(body, indent=2)}")
         except Exception as e:
             logger.warning(f"⚠️ Error parsing JSON body: {str(e)}")
-
-
 
 
 @app.errorhandler(HTTPException)
