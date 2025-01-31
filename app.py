@@ -579,17 +579,17 @@ def get_user_context():
         # Log request type and headers
         logger.info(f"📥 Received Request: {request.method}, Headers: {request.headers}")
 
-        # Extract phone number from GET or POST
+        # Default phone_number as None
         phone_number = None
+
+        # Extract phone number from GET or POST
         if request.method == "GET":
             phone_number = request.args.get("phone")  # Extract from URL parameter
         elif request.method == "POST":
             try:
-                data = request.get_json()
-                if data:
-                    phone_number = data.get("phone")  # Extract from JSON body
-                else:
-                    logger.error("❌ Empty JSON body received")
+                # Try getting JSON data, even if Content-Type is missing
+                data = request.get_json(silent=True) or {}
+                phone_number = data.get("phone")
             except Exception as e:
                 logger.error(f"❌ Error parsing JSON body: {str(e)}")
                 return jsonify({"error": "Invalid JSON format"}), 400
@@ -676,6 +676,7 @@ def get_user_context():
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
