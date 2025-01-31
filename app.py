@@ -685,7 +685,7 @@ def get_user_context():
             if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
         ]
 
-        # ✅ Prepare the Final Response
+        # ✅ Step 11: Prepare the Final Response
         context = {
             "exists": True,
             "user_info": {
@@ -712,6 +712,9 @@ def get_user_context():
             } for call in recent_calls[-3:]],  # ✅ Limit to last 3 calls
             "timestamp": datetime.utcnow().isoformat()
         }
+
+        # ✅ SEND USER DATA TO VAPI
+        send_data_to_vapi(user)  # 🔹 Add this line
 
         logger.info(f"✅ Context retrieved for user: {standardized_phone}")
         return jsonify(context), 200
@@ -749,6 +752,40 @@ def test_redis():
 def test_endpoint():
     data = request.get_json()
     return jsonify({"message": "Received data", "data": data}), 200
+
+def send_data_to_vapi(user_data):
+    """Send user data to Vapi.ai"""
+    
+    vapi_url = "https://api.vapi.ai/some-endpoint"  # 🔹 Replace with the correct Vapi URL
+
+    payload = {
+        "user_id": user_data.get("Nexa ID"),
+        "phone": user_data.get("Phone"),
+        "name": user_data.get("Name"),
+        "profession": user_data.get("Profession"),
+        "bio": user_data.get("Bio"),
+        "recent_calls": user_data.get("Calls", [])[-3:]  # Send last 3 calls only
+    }
+
+    headers = {
+        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # ✅ ADD DEBUG LOG HERE BEFORE MAKING THE REQUEST
+    logger.info(f"📤 Sending Data to Vapi: {json.dumps(payload, indent=2, default=str)}")
+
+    try:
+        response = requests.post(vapi_url, json=payload, headers=headers)
+        response.raise_for_status()  # Raise an error if request failed
+
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Error Sending Data to Vapi: {str(e)}")
+        return None
+
 
 
 if __name__ == "__main__":
