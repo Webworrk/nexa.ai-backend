@@ -756,13 +756,11 @@ def send_data_to_vapi(user_data):
         "Content-Type": "application/json"
     }
 
-    # ✅ Updated Payload: Include Full User Context
+    # ✅ Updated Payload: Move User Data inside "customer"
     payload = {
-        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
+        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Your Assistant ID
         "customer": {
-            "number": user_data.get("Phone")
-        },
-        "context": {  # ✅ This is what tells Vapi about past interactions
+            "number": user_data.get("Phone"),
             "name": user_data.get("Name"),
             "profession": user_data.get("Profession"),
             "bio": user_data.get("Bio"),
@@ -805,6 +803,7 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 
