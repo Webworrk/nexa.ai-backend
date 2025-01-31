@@ -756,45 +756,51 @@ def test_endpoint():
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"
+    vapi_url = "https://api.vapi.ai/v1/call"  # ✅ Correct API URL
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
     }
 
     # ✅ Validate Phone Number
-    if not phone_number:
-        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None  # Stop execution if phone number is missing
+    if not phone_number or not isinstance(phone_number, str) or len(phone_number) < 10:
+        logger.error(f"❌ Invalid or Missing Phone Number: {phone_number}. Aborting API Call.")
+        return None  # Stop execution if phone number is missing or invalid
 
-    # ✅ Prepare Data for Vapi
+    # ✅ Extract User Info Safely
+    user_info = user_data.get("user_info", {})
+
+    # ✅ Prepare Metadata (Vapi doesn't allow extra fields in `customer`)
+    metadata = {
+        "name": user_info.get("name", "Not Mentioned"),
+        "profession": user_info.get("profession", "Not Mentioned"),
+        "bio": user_info.get("bio", "Not Mentioned"),
+        "signup_status": user_info.get("signup_status", "Unknown"),
+        "nexa_id": user_info.get("nexa_id", "Unknown"),
+        "networking_goals": user_info.get("networking_goals", []),
+        "total_calls": user_info.get("total_calls", 0),
+        "last_calls": [
+            {
+                "call_number": call.get("call_number"),
+                "timestamp": call.get("timestamp"),
+                "networking_goal": call.get("networking_goal", "Not Mentioned"),
+                "meeting_type": call.get("meeting_type", "Not Mentioned"),
+                "meeting_status": call.get("meeting_status", "Unknown"),
+                "proposed_date": call.get("proposed_date", "Not Mentioned"),
+                "proposed_time": call.get("proposed_time", "Not Mentioned"),
+                "call_summary": call.get("call_summary", "No summary available")
+            }
+            for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
+        ]
+    }
+
+    # ✅ Final Payload
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
             "number": phone_number  # ✅ Ensure phone number is always included
         },
-        "metadata": {  # ✅ Store all user info in metadata instead
-            "name": user_data["user_info"].get("name"),
-            "profession": user_data["user_info"].get("profession"),
-            "bio": user_data["user_info"].get("bio"),
-            "signup_status": user_data["user_info"].get("signup_status"),
-            "nexa_id": user_data["user_info"].get("nexa_id"),
-            "networking_goals": user_data["user_info"].get("networking_goals"),
-            "total_calls": user_data["user_info"].get("total_calls"),
-            "last_calls": [
-                {
-                    "call_number": call.get("call_number"),
-                    "timestamp": call.get("timestamp"),
-                    "networking_goal": call.get("networking_goal"),
-                    "meeting_type": call.get("meeting_type"),
-                    "meeting_status": call.get("meeting_status"),
-                    "proposed_date": call.get("proposed_date"),
-                    "proposed_time": call.get("proposed_time"),
-                    "call_summary": call.get("call_summary")
-                }
-                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
-            ]
-        }
+        "metadata": metadata  # ✅ Store all user info in metadata instead
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
@@ -803,17 +809,16 @@ def send_data_to_vapi(phone_number, user_data):
         response = requests.post(vapi_url, json=vapi_payload, headers=headers)
 
         # ✅ Check Response Status
-        if response.status_code != 200:
+        if response.status_code not in [200, 201]:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
 
         logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
         return response.json()
 
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 if __name__ == "__main__":
