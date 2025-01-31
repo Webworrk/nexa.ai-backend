@@ -755,45 +755,48 @@ def test_endpoint():
 
 
 def send_data_to_vapi(user_data):
-    """Send user data and past conversations to Vapi.ai"""
-    
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct URL (remove /v1)
-    
+    """Send user data to Vapi.ai with full context"""
+
+    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct Vapi API URL
+
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API Key is correct
         "Content-Type": "application/json"
     }
 
-    # ✅ Get previous conversations from MongoDB
-    past_conversations = user_data.get("Calls", [])
-
+    # ✅ Extract full user details from MongoDB
     payload = {
-        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",
-        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65",
+        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",  # Your Assistant ID
         "customer": {
             "number": user_data.get("Phone")
         },
-        "context": {  
-            "previous_conversations": past_conversations  # ✅ Send past interactions  
+        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65",  # Your Vapi phoneNumberId
+        "context": {
+            "NexaID": user_data.get("Nexa ID", "Not Mentioned"),
+            "Name": user_data.get("Name", "Not Mentioned"),
+            "Email": user_data.get("Email", "Not Mentioned"),
+            "Phone": user_data.get("Phone", "Not Mentioned"),
+            "Profession": user_data.get("Profession", "Not Mentioned"),
+            "Bio": user_data.get("Bio", "Not Mentioned"),
+            "SignupStatus": user_data.get("Signup Status", "Incomplete"),
+            "Calls": user_data.get("Calls", []),  # ✅ Send full call history
         }
     }
 
-    # Debug Log Before Sending Request
-    logger.info(f"📤 Sending Data to Vapi: {json.dumps(payload, indent=2)}")
+    logging.info(f"📤 Sending Data to Vapi: {json.dumps(payload, indent=2, default=str)}")
 
     try:
         response = requests.post(vapi_url, json=payload, headers=headers)
-        
-        # Check response status
+
         if response.status_code != 200:
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
+            logging.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
 
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+        logging.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
         return response.json()
 
     except Exception as e:
-        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
+        logging.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
 
 
