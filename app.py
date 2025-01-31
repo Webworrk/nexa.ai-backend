@@ -16,6 +16,8 @@ from openai import OpenAI
 from flask_cors import CORS
 from flask import make_response
 from werkzeug.exceptions import HTTPException
+from pymongo.errors import ServerSelectionTimeoutError
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -36,15 +38,19 @@ redis_client = redis.from_url(redis_url)
 
 
 limiter = Limiter(
-    key_func=get_remote_address,
+    get_remote_address,
     storage_uri=redis_url  # Use the Redis URL from environment variables
 )
+limiter.init_app(app)
+
 
 # Initialize cache
 cache = Cache(app, config={
-    'CACHE_TYPE': 'simple',
+    'CACHE_TYPE': 'redis',
+    'CACHE_REDIS_URL': redis_url,
     'CACHE_DEFAULT_TIMEOUT': 300
 })
+
 
 # Load environment variables
 load_dotenv()
@@ -71,27 +77,53 @@ VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 
 def validate_vapi_request(request):
     """Validate incoming Vapi.ai requests using Query String (since headers disappear in tools)."""
-    token = request.args.get("secret")  # Get secret from URL query string
-    if not token or token != VAPI_SECRET_TOKEN:
-        logger.error("❌ Invalid or missing Vapi secret token")
-        raise ValueError("Invalid or missing Vapi secret token")
-
-
-
-# Connect to MongoDB
-try:
-    mongo_client = MongoClient(os.getenv("MONGO_URI"))
-    mongo_client.server_info()  # Test connection
-    logger.info("✅ MongoDB Connected Successfully")
+    token = request.args.get("secret")
     
-    db = mongo_client["Nexa"]
+    if not token:
+        logger.error("❌ Missing Vapi secret token in request!")
+        return jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
+
+    if token != VAPI_SECRET_TOKEN:
+        logger.error("❌ Invalid Vapi secret token provided!")
+        return jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
+
+
+
+MONGO_URI = os.getenv("MONGO_URI")
+
+def connect_to_mongo(retries=5, delay=2):
+    """Attempt to connect to MongoDB with retry logic."""
+    for attempt in range(retries):
+        try:
+            mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+            mongo_client.server_info()  # Test connection
+            logger.info("✅ MongoDB Connected Successfully")
+            return mongo_client  # Return the connected client
+        except ServerSelectionTimeoutError:
+            logger.error(f"❌ MongoDB Connection Timed Out! Retrying ({attempt + 1}/{retries})...")
+            time.sleep(delay)
+            delay *= 2  # Exponential backoff
+        except Exception as e:
+            logger.error(f"❌ MongoDB Connection Failed: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return None  # Exit if a different error occurs
+
+    logger.critical("❌ All MongoDB connection attempts failed. Exiting...")
+    raise SystemExit("MongoDB Connection Failed")
+
+# Call the function and get the client
+mongo_client = connect_to_mongo()
+db = mongo_client.get_database() if mongo_client else None
+
+# Define collections
+if db:
     call_logs_collection = db["CallLogs"]
     users_collection = db["Users"]
-    
-except Exception as e:
-    logger.error(f"❌ MongoDB Connection Failed: {str(e)}")
-    logger.error(f"Stack trace: {traceback.format_exc()}")
-    raise
+else:
+    logger.critical("❌ No MongoDB connection established. Collections cannot be defined.")
+    raise SystemExit("No MongoDB connection established.")
+
+
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -112,11 +144,12 @@ setup_mongodb_indexes()
 
 def standardize_phone_number(phone):
     """ Standardize phone number to E.164 format """
-
     try:
         phone = ''.join(filter(str.isdigit, str(phone)))  # Remove any non-digit characters
         if len(phone) == 10:
             return f"+91{phone}"
+        elif len(phone) == 11 and phone.startswith("9"):
+            return f"+91{phone[1:]}"  # Handle 11-digit numbers starting with '9'
         elif len(phone) == 12 and phone.startswith("91"):
             return f"+{phone}"
         elif len(phone) == 13 and phone.startswith("+91"):
