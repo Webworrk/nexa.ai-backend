@@ -758,7 +758,7 @@ def test_endpoint():
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"
+    vapi_url = "https://api.vapi.ai/v1/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
@@ -769,11 +769,11 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None  # Stop execution if phone number is missing
 
-    # ✅ Replace "phoneNumber" with "phoneNumberId"
+    # ✅ Replace "phoneNumberId" with "phoneNumber"
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "phoneNumberId": phone_number  # ✅ Use "phoneNumberId" instead of "phoneNumber"
+            "phoneNumber": phone_number  # ✅ Use "phoneNumber" instead of "phoneNumberId"
         },
         "metadata": {  # ✅ Store all user info in metadata
             "name": user_data["user_info"].get("name"),
