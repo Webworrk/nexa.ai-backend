@@ -757,7 +757,7 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai with both phone config and customer info"""
+    """Send User Context Data to Vapi.ai"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
@@ -767,23 +767,12 @@ def send_data_to_vapi(phone_number, user_data):
     # Get user info
     user_info = user_data.get("user_info", {})
 
-    # Create payload with both phone config and customer info
+    # Create payload with customer at root level
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": {
-            "twilioPhoneNumber": "+18454796197",
-            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
-            "twilioAuthToken": "a817e4b98d1635b4ca670a828a2171be"
-        },
         "customer": {
             "name": user_info.get("name", ""),
-            "data": {
-                "profession": user_info.get("profession"),
-                "bio": user_info.get("bio"),
-                "nexa_id": user_info.get("nexa_id"),
-                "signup_status": user_info.get("signup_status"),
-                "total_calls": user_info.get("total_calls")
-            }
+            "phone": phone_number
         }
     }
 
