@@ -769,12 +769,10 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None
 
-    # Create payload with correct structure
+    # Create a simpler payload structure
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "customer": {
-            "phoneNumber": phone_number  # Changed to phoneNumber as per API requirements
-        },
+        "customer": phone_number,  # Just send the phone number directly
         "metadata": {
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
