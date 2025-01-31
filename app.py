@@ -760,7 +760,7 @@ def send_data_to_vapi(phone_number, user_data):
 
     vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
+        "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
@@ -769,13 +769,11 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None  # Stop execution if phone number is missing
 
-    # ✅ Replace "phoneNumberId" with "phoneNumber"
+    # ✅ Prepare Data for Vapi
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "customer": {
-            "phoneNumber": phone_number  # ✅ Use "phoneNumber" instead of "phoneNumberId"
-        },
-        "metadata": {  # ✅ Store all user info in metadata
+        "phoneNumber": phone_number,  # ✅ Move `phoneNumber` outside `customer`
+        "metadata": {  # ✅ Store all user info in metadata instead
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
             "bio": user_data["user_info"].get("bio"),
@@ -815,7 +813,6 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 
