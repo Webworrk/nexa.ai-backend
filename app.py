@@ -663,14 +663,23 @@ def get_user_context():
             ]
         })
 
-        logger.info(f"🔍 User Data Retrieved from MongoDB: {json.dumps(user, indent=2, default=str)}")
+        # ✅ Log safely (MongoDB might return None)
+        if user:
+            logger.info(f"🔍 User Data Retrieved from MongoDB: {json.dumps(user, indent=2, default=str)}")
+        else:
+            logger.warning(f"⚠️ No user found for {standardized_phone}")
 
         # ✅ Handle New Users
         if not user:
-            logger.warning(f"⚠️ No user found for {standardized_phone}")
             return jsonify({"exists": False, "message": "New user detected"}), 200
 
         user["_id"] = str(user["_id"])  # ✅ Convert _id safely
+
+        # ✅ Extract Phone Number Properly
+        user_phone = user.get("Phone")
+        if not user_phone:
+            logger.error("❌ User data is missing phone number")
+            return jsonify({"error": "User data is missing phone number"}), 400
 
         # ✅ Fetch recent calls safely
         recent_calls = user.get("Calls", [])
@@ -681,8 +690,7 @@ def get_user_context():
             call.get("Networking Goal") for call in recent_calls if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
         ]
 
-
-        # ✅ Step 11: Prepare the Final Response
+        # ✅ Structure Data for Response
         context = {
             "exists": True,
             "user_info": {
@@ -710,15 +718,48 @@ def get_user_context():
             "timestamp": datetime.utcnow().isoformat()
         }
 
+        logger.info(f"🚀 Final User Context Prepared: {json.dumps(context, indent=2, default=str)}")
 
-        logger.info(f"🚀 Final User Context Sent to Vapi: {json.dumps(context, indent=2, default=str)}")
-        send_data_to_vapi(context)  
+        # ✅ Prepare Data for Vapi
+        vapi_payload = {
+            "assistantId": VAPI_ASSISTANT_ID,
+            "customer": {
+                "number": user_phone  # ✅ Ensure phone number is always included
+            },
+            "metadata": {
+                "name": user.get("Name"),
+                "profession": user.get("Profession"),
+                "bio": user.get("Bio"),
+                "signup_status": user.get("Signup Status"),
+                "nexa_id": user.get("Nexa ID"),
+                "networking_goals": networking_goals,
+                "total_calls": len(recent_calls),
+                "last_calls": [
+                    {
+                        "call_number": call.get("Call Number"),
+                        "timestamp": call.get("Timestamp"),
+                        "networking_goal": call.get("Networking Goal"),
+                        "meeting_type": call.get("Meeting Type"),
+                        "meeting_status": call.get("Meeting Status"),
+                        "proposed_date": call.get("Proposed Meeting Date"),
+                        "proposed_time": call.get("Proposed Meeting Time"),
+                        "call_summary": call.get("Call Summary")
+                    }
+                    for call in recent_calls[-3:]  # ✅ Send last 3 calls only
+                ]
+            }
+        }
+
+        # ✅ Log and Send Data to Vapi
+        logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
+        send_data_to_vapi(vapi_payload)
 
         return jsonify(context), 200
 
     except Exception as e:
         logger.error(f"❌ Error fetching user context: {str(e)}")
         return jsonify({"error": "Failed to fetch user context", "details": str(e)}), 500
+
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
@@ -748,28 +789,28 @@ def test_endpoint():
 
 
 def send_data_to_vapi(user_data):
-    """Send user data to Vapi.ai with correct metadata formatting"""
+    """Send user data to Vapi.ai with proper phone number formatting"""
 
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct public Vapi API URL
+    vapi_url = "https://api.vapi.ai/v1/call"
 
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API Key is correct
         "Content-Type": "application/json"
     }
 
-    # ✅ Get the phone number from user data
+    # ✅ Extract and Validate Phone Number
     phone_number = user_data.get("Phone")
-    if not phone_number:
-        logger.error("❌ Missing Phone Number in User Data")
-        return None  # Exit if no phone number is found
 
-    # ✅ Vapi requires `customer.number` to have a phone number
+    if not phone_number:
+        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
+        return None  # Stop execution if phone number is missing
+
     payload = {
-        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Your Assistant ID
+        "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": phone_number  # ✅ Ensure this is correct
+            "number": phone_number  # ✅ Ensure phone number is included
         },
-        "metadata": {  # ✅ Safe place for extra user information
+        "metadata": {  # ✅ Store extra user info here safely
             "name": user_data.get("Name"),
             "profession": user_data.get("Profession"),
             "bio": user_data.get("Bio"),
@@ -808,7 +849,6 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 
