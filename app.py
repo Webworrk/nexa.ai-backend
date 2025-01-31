@@ -17,6 +17,7 @@ from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 from pymongo.errors import ServerSelectionTimeoutError
 import time
+from requests.exceptions import RequestException
 
 # Configure logging
 logging.basicConfig(
