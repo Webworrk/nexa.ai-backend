@@ -63,14 +63,19 @@ VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
 def validate_vapi_request(request):
-    """Validate Vapi.ai requests via query parameters or headers."""
-    token = request.args.get("secret") or request.headers.get("x-vapi-secret")
+    """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
+    token = request.args.get("secret") or request.headers.get("x-vapi-secret")  # Check both
 
-    if not token or token.strip().lower() != VAPI_SECRET_TOKEN.strip().lower():
-        logger.error("❌ Unauthorized Vapi Request")
-        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403  # ✅ Now it returns two values
+    if not token:
+        logger.error("❌ Missing Vapi secret token in query string!")
+        return False, jsonify({"error": "Unauthorized request", "message": "Missing secret token"}), 403  
+
+    if token.strip().lower() != VAPI_SECRET_TOKEN.strip().lower():
+        logger.error("❌ Invalid Vapi secret token provided!")
+        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403  
 
     return True, None  # ✅ Always return two values
+
 
 
 
