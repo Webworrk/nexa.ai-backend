@@ -64,7 +64,7 @@ MONGO_URI = os.getenv("MONGO_URI")
 
 def validate_vapi_request(request):
     """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
-    token = request.args.get("secret")  # Extract secret token from query params
+    token = request.args.get("secret") or request.headers.get("x-vapi-secret")  # Check both
     if not token:
         logger.error("❌ Missing Vapi secret token in query string!")
         return False, jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
@@ -95,7 +95,7 @@ def connect_to_mongo(retries=5, delay=2):
 
 # Connect to MongoDB
 mongo_client = connect_to_mongo()
-db = mongo_client.get_database("Nexa") if mongo_client else None
+db = mongo_client["Nexa"] if mongo_client else None
 
 call_logs_collection = db["CallLogs"] if db else None
 users_collection = db["Users"] if db else None
@@ -148,7 +148,7 @@ def before_request():
 
     # Convert headers to dictionary safely
     try:
-        logger.info(f"Headers: {json.dumps(dict(request.headers), indent=2)}")
+        logger.info(f"Headers: {str(request.headers)}")
     except Exception as e:
         logger.warning(f"⚠️ Error logging headers: {str(e)}")
 
@@ -166,8 +166,7 @@ def before_request():
     if request.endpoint in ["sync_vapi_calllogs", "vapi_webhook"]:
         is_valid, error_response = validate_vapi_request(request)
         if not is_valid:
-            logger.error("❌ Unauthorized Vapi Request")
-            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+            return error_response  # This correctly returns the error
 
     # Log request body if it's JSON, safely
     if request.is_json:
@@ -325,8 +324,7 @@ def sync_vapi_calllogs():
     try:
         is_valid, error_response = validate_vapi_request(request)
         if not is_valid:
-            logger.error("❌ Unauthorized Vapi Request")
-            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+            return error_response  # This correctly returns the error
 
         
         headers = {
@@ -411,8 +409,7 @@ def vapi_webhook():
     try:
         is_valid, error_response = validate_vapi_request(request)
         if not is_valid:
-            logger.error("❌ Unauthorized Vapi Request")
-            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+            return error_response  # This correctly returns the error
 
         data = request.get_json()
         if not data:
