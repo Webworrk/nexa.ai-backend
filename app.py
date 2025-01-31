@@ -746,8 +746,9 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
+
 def send_data_to_vapi(user_data):
-    """Send user data to Vapi.ai"""
+    """Send user data to Vapi.ai with correct metadata formatting"""
     
     vapi_url = "https://api.vapi.ai/call"  # ✅ Correct public Vapi API URL
 
@@ -756,34 +757,32 @@ def send_data_to_vapi(user_data):
         "Content-Type": "application/json"
     }
 
-    # ✅ Updated Payload: Move User Data inside "customer"
+    # ✅ Vapi only allows "number" inside "customer"
     payload = {
         "assistantId": VAPI_ASSISTANT_ID,  # ✅ Your Assistant ID
         "customer": {
-            "number": user_data.get("Phone"),
+            "number": user_data.get("Phone")  # ✅ Vapi requires only "number" here
+        },
+        "metadata": {  # ✅ Safe place for extra user information
             "name": user_data.get("Name"),
             "profession": user_data.get("Profession"),
             "bio": user_data.get("Bio"),
             "signup_status": user_data.get("Signup Status"),
             "nexa_id": user_data.get("Nexa ID"),
-            "networking_goals": [
-                call.get("Networking Goal") 
-                for call in user_data.get("Calls", []) 
-                if call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
-            ],
+            "networking_goals": user_data.get("networking_goals", []),
+            "total_calls": user_data.get("total_calls", 0),
             "last_calls": [
                 {
-                    "call_number": call.get("Call Number"),
-                    "timestamp": call.get("Timestamp"),
-                    "networking_goal": call.get("Networking Goal"),
-                    "meeting_type": call.get("Meeting Type"),
-                    "meeting_status": call.get("Meeting Status"),
-                    "proposed_date": call.get("Proposed Meeting Date"),
-                    "proposed_time": call.get("Proposed Meeting Time"),
-                    "call_summary": call.get("Call Summary"),
-                    "conversation": call.get("Conversation", [])
+                    "call_number": call.get("call_number"),
+                    "timestamp": call.get("timestamp"),
+                    "networking_goal": call.get("networking_goal"),
+                    "meeting_type": call.get("meeting_type"),
+                    "meeting_status": call.get("meeting_status"),
+                    "proposed_date": call.get("proposed_date"),
+                    "proposed_time": call.get("proposed_time"),
+                    "call_summary": call.get("call_summary")
                 }
-                for call in user_data.get("Calls", [])[-3:]  # ✅ Send last 3 calls only
+                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
             ]
         }
     }
@@ -803,6 +802,7 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 
