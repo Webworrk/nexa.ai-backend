@@ -787,12 +787,22 @@ def send_data_to_vapi(user_data):
         "Content-Type": "application/json"
     }
     
+    # Check if user_data is a dictionary containing user_info or just user document
+    phone = (user_data.get("user_info", {}).get("phone") or 
+             user_data.get("Phone") or 
+             user_data.get("phone"))
+    
     payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": user_data.get("user_info", {}).get("phone") or user_data.get("Phone")
+            "name": user_data.get("Name", ""),
+            "number": phone
         },
-        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65"
+        "connection": {
+            "type": "twilio",
+            "accountSid": os.getenv("TWILIO_ACCOUNT_SID"),
+            "authToken": os.getenv("TWILIO_AUTH_TOKEN")
+        }
     }
 
     logger.info(f"📤 Sending to Vapi: {json.dumps(payload, indent=2)}")
@@ -808,7 +818,6 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Vapi Error: {str(e)}")
         return None
-
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
     port = int(os.environ.get("PORT", 5000))
