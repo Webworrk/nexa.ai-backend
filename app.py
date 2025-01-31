@@ -63,15 +63,15 @@ VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
 def validate_vapi_request(request):
-    """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
-    token = request.args.get("secret") or request.headers.get("x-vapi-secret")  # Check both
-    if not token:
-        logger.error("❌ Missing Vapi secret token in query string!")
-        return False, jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
-    if token and token.lower() != VAPI_SECRET_TOKEN.lower():
-        logger.error("❌ Invalid Vapi secret token provided!")
-        return False, jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
+    """Validate Vapi.ai requests via query parameters or headers."""
+    token = request.args.get("secret") or request.headers.get("x-vapi-secret")
+
+    if not token or token.strip().lower() != VAPI_SECRET_TOKEN.strip().lower():
+        logger.error("❌ Unauthorized Vapi Request")
+        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+    
     return True, None
+
 
 
 def connect_to_mongo(retries=5, delay=2):
@@ -88,17 +88,22 @@ def connect_to_mongo(retries=5, delay=2):
             delay *= 2  # Exponential backoff
         except Exception as e:
             logger.error(f"❌ MongoDB Connection Failed: {str(e)}")
-            return None
+            logger.error(f"Stack trace: {traceback.format_exc()}")
 
     logger.critical("❌ All MongoDB connection attempts failed. Exiting...")
     raise SystemExit("MongoDB Connection Failed")
 
 # Connect to MongoDB
 mongo_client = connect_to_mongo()
-db = mongo_client["Nexa"] if mongo_client else None
+db = mongo_client["Nexa"] if mongo_client is not None else None
 
-call_logs_collection = db["CallLogs"] if db else None
-users_collection = db["Users"] if db else None
+if db is not None:
+    call_logs_collection = db["CallLogs"]
+    users_collection = db["Users"]
+else:
+    logger.error("❌ Database connection failed")
+    raise SystemExit("MongoDB Connection Failed")
+
 
 
 # Initialize OpenAI client
