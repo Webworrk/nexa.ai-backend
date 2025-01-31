@@ -68,14 +68,13 @@ def validate_vapi_request(request):
 
     if not token:
         logger.error("❌ Missing Vapi secret token in query string!")
-        return False, jsonify({"error": "Unauthorized request", "message": "Missing secret token"}), 403  
+        return False, jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403  # ✅ RETURN 2 VALUES
 
-    if token.strip().lower() != VAPI_SECRET_TOKEN.strip().lower():
+    if token.lower() != VAPI_SECRET_TOKEN.lower():
         logger.error("❌ Invalid Vapi secret token provided!")
-        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403  
+        return False, jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403  # ✅ RETURN 2 VALUES
 
-    return True, None  # ✅ Always return two values
-
+    return True, None  # ✅ RETURN 2 VALUES (is_valid, error_response)
 
 
 
@@ -619,7 +618,7 @@ def get_user_context():
     # ✅ Validate Vapi request FIRST
     is_valid, error_response = validate_vapi_request(request)
     if not is_valid:
-        return error_response  # ✅ Fix: Return the actual error response
+        return error_response  # ✅ This will now correctly return the response
 
     try:
         # ✅ Log Request Details
