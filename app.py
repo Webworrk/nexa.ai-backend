@@ -579,16 +579,14 @@ def get_user_context():
         # Log request type and headers
         logger.info(f"📥 Received Request: {request.method}, Headers: {request.headers}")
 
-        # Default phone_number as None
-        phone_number = None
+        phone_number = None  # Default value
 
         # Extract phone number from GET or POST
         if request.method == "GET":
-            phone_number = request.args.get("phone")  # Extract from URL parameter
+            phone_number = request.args.get("phone")
         elif request.method == "POST":
             try:
-                # Try getting JSON data, even if Content-Type is missing
-                data = request.get_json(silent=True) or {}
+                data = request.get_json(silent=True) or {}  # Allow empty JSON
                 phone_number = data.get("phone")
             except Exception as e:
                 logger.error(f"❌ Error parsing JSON body: {str(e)}")
@@ -627,14 +625,14 @@ def get_user_context():
 
         # Get last 3 calls for recent context
         recent_calls = user.get("Calls", [])[-3:]
-        
+
         # Get networking goals from recent calls
         networking_goals = [
-            call.get("Networking Goal") 
-            for call in recent_calls 
+            call.get("Networking Goal")
+            for call in recent_calls
             if call.get("Networking Goal") != "Not Mentioned"
         ]
-        
+
         # Format the context response
         context = {
             "exists": True,
@@ -662,10 +660,10 @@ def get_user_context():
             } for call in recent_calls],
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
         logger.info(f"✅ Context retrieved for user: {standardized_phone}")
         logger.debug(f"📝 Context: {json.dumps(context, indent=2)}")
-        
+
         return jsonify(context), 200
 
     except Exception as e:
@@ -676,6 +674,7 @@ def get_user_context():
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
 
 
 
