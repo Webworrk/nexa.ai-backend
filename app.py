@@ -757,7 +757,7 @@ def test_endpoint():
 def send_data_to_vapi(user_data):
     """Send user data and past conversations to Vapi.ai"""
     
-    vapi_url = "https://api.vapi.ai/v1/call"  # ✅ Correct Public Vapi API URL
+    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct URL (remove /v1)
     
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API Key is correct
