@@ -67,10 +67,12 @@ def validate_vapi_request(request):
     token = request.args.get("secret")  # Extract secret token from query params
     if not token:
         logger.error("❌ Missing Vapi secret token in query string!")
-        return jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
+        return False, jsonify({"error": "Unauthorized", "message": "Missing secret token"}), 403
     if token and token.lower() != VAPI_SECRET_TOKEN.lower():
         logger.error("❌ Invalid Vapi secret token provided!")
-        return jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
+        return False, jsonify({"error": "Unauthorized", "message": "Invalid secret token"}), 403
+    return True, None
+
 
 def connect_to_mongo(retries=5, delay=2):
     """Attempt to connect to MongoDB with retry logic."""
@@ -93,7 +95,7 @@ def connect_to_mongo(retries=5, delay=2):
 
 # Connect to MongoDB
 mongo_client = connect_to_mongo()
-db = mongo_client["Nexa"] if mongo_client else None
+db = mongo_client.get_database("Nexa") if mongo_client else None
 
 call_logs_collection = db["CallLogs"] if db else None
 users_collection = db["Users"] if db else None
@@ -143,23 +145,29 @@ def hash_transcript(transcript):
 def before_request():
     """Log incoming requests, ensure correct headers, and handle HEAD requests."""
     logger.info(f"📥 Incoming Request: {request.method} {request.url}")
-    
+
     # Convert headers to dictionary safely
     try:
         logger.info(f"Headers: {json.dumps(dict(request.headers), indent=2)}")
     except Exception as e:
         logger.warning(f"⚠️ Error logging headers: {str(e)}")
 
-    # Handle HEAD requests separately (No body needed in response)
+    # Handle HEAD requests separately
     if request.method == "HEAD":
-        response = make_response("", 200)
-        return response
+        return make_response("", 200)
 
     # Ensure JSON requests have correct headers
     if request.method in ["POST", "PUT", "PATCH"]:
         if not request.is_json:
             logger.warning("⚠️ Non-JSON body received")
             return jsonify({"error": "Request must be JSON", "status": 415}), 415
+
+    # Validate Vapi request if needed (for relevant routes)
+    if request.endpoint in ["sync_vapi_calllogs", "vapi_webhook"]:
+        is_valid, error_response = validate_vapi_request(request)
+        if not is_valid:
+            logger.error("❌ Unauthorized Vapi Request")
+            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
 
     # Log request body if it's JSON, safely
     if request.is_json:
@@ -168,6 +176,7 @@ def before_request():
             logger.info(f"Body: {json.dumps(body, indent=2)}")
         except Exception as e:
             logger.warning(f"⚠️ Error parsing JSON body: {str(e)}")
+
 
 
 @app.errorhandler(HTTPException)
@@ -314,7 +323,11 @@ def extract_user_info_from_transcript(transcript):
 def sync_vapi_calllogs():
     """Sync call logs from Vapi.ai"""
     try:
-        validate_vapi_request(request)
+        is_valid, error_response = validate_vapi_request(request)
+        if not is_valid:
+            logger.error("❌ Unauthorized Vapi Request")
+            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+
         
         headers = {
             "Authorization": f"Bearer {VAPI_API_KEY}",
@@ -396,8 +409,11 @@ def sync_vapi_calllogs():
 def vapi_webhook():
     """Handle incoming webhooks from Vapi.ai"""
     try:
-        validate_vapi_request(request)
-        
+        is_valid, error_response = validate_vapi_request(request)
+        if not is_valid:
+            logger.error("❌ Unauthorized Vapi Request")
+            return jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
+
         data = request.get_json()
         if not data:
             logger.error("❌ No JSON received!")
@@ -582,9 +598,9 @@ def process_transcript(user_phone, transcript):
         logger.info(f"📝 Call Summary: {summary.get('Call Summary')}")
 
     except Exception as e:
-        logger.error(f"❌ Error Processing Transcript: {str(e)}")
+        logger.error(f"❌ Error Processing Transcript for {user_phone}: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise
+        return None  # Return instead of raising an exception
 
 @app.route("/user-context", methods=["GET", "POST"])
 @limiter.limit("60 per minute", override_defaults=False)
