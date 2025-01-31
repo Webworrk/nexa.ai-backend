@@ -756,19 +756,20 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai"""
+    """Send User Context Data to Vapi.ai with Twilio credentials"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Create payload with phone number as an object
+    # Create payload with Twilio requirements
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "number": phone_number,  # Put the phone number in an object
-            "type": "E164"  # Specify the phone number format
+            "twilioPhoneNumber": "+18454796197",  # Your Twilio phone number
+            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
+            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN")
         }
     }
 
