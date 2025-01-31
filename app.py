@@ -757,15 +757,16 @@ def test_endpoint():
 def send_data_to_vapi(user_data):
     """Send user data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Corrected Vapi API URL
+    vapi_url = "https://api.vapi.ai/v1/call/phone"  # ✅ Corrected Vapi API URL
 
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure your API Key is correct
         "Content-Type": "application/json"
     }
 
-    # ✅ **Updated Payload: Removed 'assistant_id' and 'phone_number_id'**
+    # ✅ **Updated Payload: Added `assistantId`**
     payload = {
+        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",  # 🔹 Your Assistant ID
         "customer": {
             "number": user_data.get("Phone")  # Only passing phone number
         }
@@ -788,7 +789,6 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 if __name__ == "__main__":
