@@ -780,35 +780,34 @@ def clear_cache():
         }), 500
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai"""
-    vapi_url = "https://api.vapi.ai/call"
-    headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    user_info = user_data.get("user_info", {})
-    vapi_payload = {
-        "assistantId": VAPI_ASSISTANT_ID,
-        "customer": {
-            "name": user_info.get("name", ""),
-            "number": phone_number  # Move number inside customer object
-        }
-    }
-
-    logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
-
+    """Send user data to Vapi.ai"""
     try:
-        response = requests.post(vapi_url, json=vapi_payload, headers=headers, timeout=30)
-        if response.status_code != 200:
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
-            logger.error(f"Failed request payload: {json.dumps(vapi_payload, indent=2)}")
-            return None
-
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.text}")
+        response = requests.post(
+            "https://api.vapi.ai/call",
+            headers={
+                "Authorization": f"Bearer {VAPI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "assistantId": VAPI_ASSISTANT_ID,
+                "customer": {
+                    "name": user_data.get("user_info", {}).get("name", ""),
+                    "number": phone_number
+                },
+                "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65"
+            },
+            timeout=30
+        )
+        
+        response.raise_for_status()
+        logger.info(f"✅ Vapi Response: {response.text}")
         return response.json()
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Vapi API Error: {str(e)}")
+        return None
     except Exception as e:
-        logger.error(f"❌ Error sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Unexpected Error: {str(e)}")
         return None
 
 
