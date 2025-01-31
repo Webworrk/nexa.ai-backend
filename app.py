@@ -68,9 +68,9 @@ def validate_vapi_request(request):
 
     if not token or token.strip().lower() != VAPI_SECRET_TOKEN.strip().lower():
         logger.error("❌ Unauthorized Vapi Request")
-        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403
-    
-    return True, None
+        return False, jsonify({"error": "Unauthorized request", "message": "Invalid Vapi Secret"}), 403  # ✅ Now it returns two values
+
+    return True, None  # ✅ Always return two values
 
 
 
