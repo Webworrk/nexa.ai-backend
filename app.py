@@ -720,7 +720,7 @@ def get_user_context():
         logger.info(f"🚀 Final User Context Prepared: {json.dumps(context, indent=2, default=str)}")
 
         # ✅ Send Data to Vapi
-        send_data_to_vapi(user_phone, context)
+        send_data_to_vapi(user)
 
         return jsonify(context), 200
 
@@ -781,41 +781,33 @@ def clear_cache():
 
 def send_data_to_vapi(user_data):
     """Send user data to Vapi.ai"""
-
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct API URL
-
+    vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
+        "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
-
-    # ✅ Updated Payload: Added `phoneNumberId`
+    
     payload = {
-        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",  # ✅ Your Assistant ID
+        "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": user_data.get("Phone")  # ✅ Customer Phone Number
+            "number": user_data.get("user_info", {}).get("phone") or user_data.get("Phone")
         },
-        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65"  # ✅ Your Phone Number ID from Vapi
+        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65"
     }
 
-    # Debug Log Before Sending Request
-    logger.info(f"🔄 Sending Data to Vapi: {json.dumps(payload, indent=2, default=str)}")
+    logger.info(f"📤 Sending to Vapi: {json.dumps(payload, indent=2)}")
 
     try:
-        response = requests.post(vapi_url, json=payload, headers=headers)
-
-        # ✅ Check for success (201 means Created)
-        if response.status_code not in [200, 201]:  
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} -> {response.text}")
+        response = requests.post(vapi_url, json=payload, headers=headers, timeout=30)
+        if response.status_code not in [200, 201]:
+            logger.error(f"❌ Vapi Error {response.status_code}: {response.text}")
             return None
-
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+            
+        logger.info(f"✅ Vapi Success: {response.text}")
         return response.json()
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Request Error while sending data to Vapi: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Vapi Error: {str(e)}")
         return None
-
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
