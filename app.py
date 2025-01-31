@@ -749,7 +749,7 @@ def test_endpoint():
 
 def send_data_to_vapi(user_data):
     """Send user data to Vapi.ai with correct metadata formatting"""
-    
+
     vapi_url = "https://api.vapi.ai/call"  # ✅ Correct public Vapi API URL
 
     headers = {
@@ -757,11 +757,17 @@ def send_data_to_vapi(user_data):
         "Content-Type": "application/json"
     }
 
-    # ✅ Vapi only allows "number" inside "customer"
+    # ✅ Get the phone number from user data
+    phone_number = user_data.get("Phone")
+    if not phone_number:
+        logger.error("❌ Missing Phone Number in User Data")
+        return None  # Exit if no phone number is found
+
+    # ✅ Vapi requires `customer.number` to have a phone number
     payload = {
         "assistantId": VAPI_ASSISTANT_ID,  # ✅ Your Assistant ID
         "customer": {
-            "number": user_data.get("Phone")  # ✅ Vapi requires only "number" here
+            "number": phone_number  # ✅ Ensure this is correct
         },
         "metadata": {  # ✅ Safe place for extra user information
             "name": user_data.get("Name"),
@@ -802,7 +808,6 @@ def send_data_to_vapi(user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 
