@@ -756,8 +756,30 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
+@app.route("/clear-cache", methods=["POST"])
+def clear_cache():
+    """Clear both Redis and Flask-Cache caches"""
+    try:
+        # Clear Redis cache
+        redis_client.flushall()
+        
+        # Clear Flask-Caching cache
+        cache.clear()
+        
+        return jsonify({
+            "status": "success",
+            "message": "All caches cleared successfully",
+            "timestamp": datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"❌ Error clearing cache: {str(e)}")
+        return jsonify({
+            "error": "Failed to clear cache",
+            "details": str(e)
+        }), 500
+
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai"""
+    """Send User Context Data to Vapi.ai with minimal required fields"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
@@ -767,13 +789,13 @@ def send_data_to_vapi(phone_number, user_data):
     # Get user info
     user_info = user_data.get("user_info", {})
 
-    # Create payload with customer at root level
+    # Create minimal payload with just required fields
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "name": user_info.get("name", ""),
-            "phone": phone_number
-        }
+            "name": user_info.get("name", "")  # Only send name in customer object
+        },
+        "number": phone_number  # Phone number at root level
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
@@ -790,9 +812,16 @@ def send_data_to_vapi(phone_number, user_data):
         logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response_text}")
         return response.json()
 
+    except requests.Timeout:
+        logger.error("❌ Request to Vapi timed out after 30 seconds")
+        return None
+    except requests.RequestException as e:
+        logger.error(f"❌ Network error when sending to Vapi: {str(e)}")
+        return None
     except Exception as e:
         logger.error(f"❌ Error sending data to Vapi: {str(e)}")
         return None
+
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
