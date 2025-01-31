@@ -758,7 +758,7 @@ def test_endpoint():
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/v1/call"  # ✅ Correct API URL
+    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct API URL
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
