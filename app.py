@@ -70,10 +70,12 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 
 def validate_vapi_request(request):
-    """Validate incoming Vapi.ai requests"""
-    token = request.args.get("secret")  # Use query parameter instead of headers
+    """Validate incoming Vapi.ai requests using Query String (since headers disappear in tools)."""
+    token = request.args.get("secret")  # Get secret from URL query string
     if not token or token != VAPI_SECRET_TOKEN:
+        logger.error("❌ Invalid or missing Vapi secret token")
         raise ValueError("Invalid or missing Vapi secret token")
+
 
 
 # Connect to MongoDB
@@ -581,14 +583,12 @@ def get_user_context():
         # Log request type and headers
         logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
 
-        # Extract phone number based on method
+        # Extract phone number correctly
         if request.method == "GET":
-            phone_number = request.args.get("phone")
+            phone_number = request.args.get("phone")  # GET request (Query String)
         elif request.method == "POST":
-            if not request.is_json:
-                return jsonify({"error": "Invalid JSON request"}), 400
             data = request.get_json(silent=True) or {}
-            phone_number = data.get("phone")
+            phone_number = data.get("phone")  # POST request (JSON Body)
 
         # Check if phone_number is missing
         if not phone_number:
@@ -669,6 +669,7 @@ def get_user_context():
             "details": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }), 500
+
 
 
 @app.route("/test-redis", methods=["GET", "POST"])
