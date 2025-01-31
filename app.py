@@ -763,10 +763,13 @@ def send_data_to_vapi(phone_number, user_data):
         "Content-Type": "application/json"
     }
 
-    # Create payload with correct phone number field
+    # Create payload with phone number as an object
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": phone_number  # Using phoneNumber instead of phoneNumberId
+        "phoneNumber": {
+            "number": phone_number,  # Put the phone number in an object
+            "type": "E164"  # Specify the phone number format
+        }
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
