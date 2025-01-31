@@ -756,22 +756,17 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai with absolute minimum payload"""
+    """Send User Context Data to Vapi.ai with only required fields"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Get basic user info
-    user_info = user_data.get("user_info", {})
-
-    # Create the most basic payload possible
+    # Create payload with only required fields
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "customer": {
-            "name": user_info.get("name", "")
-        }
+        "phoneNumberId": phone_number  # Use the phone number at root level
     }
 
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
@@ -782,7 +777,6 @@ def send_data_to_vapi(phone_number, user_data):
 
         if response.status_code != 200:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response_text}")
-            # Log the exact request that failed
             logger.error(f"Failed request payload: {json.dumps(vapi_payload, indent=2)}")
             return None
 
@@ -792,7 +786,6 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Error sending data to Vapi: {str(e)}")
         return None
-
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
