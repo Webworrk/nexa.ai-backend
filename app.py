@@ -756,45 +756,21 @@ def test_endpoint():
 
 
 def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai"""
+    """Send User Context Data to Vapi.ai with absolute minimum payload"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Validate Phone Number
-    if not phone_number:
-        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None
-
-    # Extract user info safely
+    # Get basic user info
     user_info = user_data.get("user_info", {})
-    recent_calls = user_data.get("recent_interactions", [])[-3:]
 
-    # Create minimal payload with just required fields
+    # Create the most basic payload possible
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "name": user_info.get("name", ""),
-            "phone": phone_number
-        },
-        "variables": {  # Using variables instead of metadata
-            "bio": user_info.get("bio", ""),
-            "profession": user_info.get("profession", ""),
-            "nexa_id": user_info.get("nexa_id", ""),
-            "signup_status": user_info.get("signup_status", ""),
-            "total_calls": user_info.get("total_calls", 0),
-            "networking_goals": user_info.get("networking_goals", []),
-            "recent_calls": [
-                {
-                    "number": call.get("call_number"),
-                    "time": call.get("timestamp"),
-                    "goal": call.get("networking_goal"),
-                    "summary": call.get("call_summary")
-                }
-                for call in recent_calls if call
-            ]
+            "name": user_info.get("name", "")
         }
     }
 
@@ -806,20 +782,15 @@ def send_data_to_vapi(phone_number, user_data):
 
         if response.status_code != 200:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response_text}")
+            # Log the exact request that failed
+            logger.error(f"Failed request payload: {json.dumps(vapi_payload, indent=2)}")
             return None
 
         logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response_text}")
         return response.json()
 
-    except requests.Timeout:
-        logger.error("❌ Request to Vapi timed out after 30 seconds")
-        return None
-    except requests.RequestException as e:
-        logger.error(f"❌ Network error when sending to Vapi: {str(e)}")
-        return None
     except Exception as e:
-        logger.error(f"❌ Unexpected error when sending to Vapi: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
+        logger.error(f"❌ Error sending data to Vapi: {str(e)}")
         return None
 
 
