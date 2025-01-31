@@ -747,49 +747,65 @@ def test_endpoint():
 
 
 def send_data_to_vapi(user_data):
-    """Send user data to Vapi.ai with full context"""
-
-    vapi_url = "https://api.vapi.ai/call"  # ✅ Correct Vapi API URL
+    """Send user data to Vapi.ai"""
+    
+    vapi_url = "https://api.vapi.ai/v1/call"  # ✅ Correct public Vapi API URL
 
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API Key is correct
         "Content-Type": "application/json"
     }
 
-    # ✅ Extract full user details from MongoDB
+    # ✅ Updated Payload: Include Full User Context
     payload = {
-        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",  # Your Assistant ID
+        "assistantId": VAPI_ASSISTANT_ID,  # ✅ Assistant ID
         "customer": {
             "number": user_data.get("Phone")
         },
-        "phoneNumberId": "fe33c516-4181-4296-a4d7-b744db7b1d65",  # Your Vapi phoneNumberId
-        "context": {
-            "NexaID": user_data.get("Nexa ID", "Not Mentioned"),
-            "Name": user_data.get("Name", "Not Mentioned"),
-            "Email": user_data.get("Email", "Not Mentioned"),
-            "Phone": user_data.get("Phone", "Not Mentioned"),
-            "Profession": user_data.get("Profession", "Not Mentioned"),
-            "Bio": user_data.get("Bio", "Not Mentioned"),
-            "SignupStatus": user_data.get("Signup Status", "Incomplete"),
-            "Calls": user_data.get("Calls", []),  # ✅ Send full call history
+        "context": {  # ✅ This is what tells Vapi about past interactions
+            "name": user_data.get("Name"),
+            "profession": user_data.get("Profession"),
+            "bio": user_data.get("Bio"),
+            "signup_status": user_data.get("Signup Status"),
+            "nexa_id": user_data.get("Nexa ID"),
+            "networking_goals": [
+                call.get("Networking Goal") 
+                for call in user_data.get("Calls", []) 
+                if call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
+            ],
+            "last_calls": [
+                {
+                    "call_number": call.get("Call Number"),
+                    "timestamp": call.get("Timestamp"),
+                    "networking_goal": call.get("Networking Goal"),
+                    "meeting_type": call.get("Meeting Type"),
+                    "meeting_status": call.get("Meeting Status"),
+                    "proposed_date": call.get("Proposed Meeting Date"),
+                    "proposed_time": call.get("Proposed Meeting Time"),
+                    "call_summary": call.get("Call Summary"),
+                    "conversation": call.get("Conversation", [])
+                }
+                for call in user_data.get("Calls", [])[-3:]  # ✅ Send last 3 calls only
+            ]
         }
     }
 
-    logging.info(f"📤 Sending Data to Vapi: {json.dumps(payload, indent=2, default=str)}")
+    logger.info(f"📤 Sending Data to Vapi: {json.dumps(payload, indent=2, default=str)}")
 
     try:
         response = requests.post(vapi_url, json=payload, headers=headers)
 
         if response.status_code != 200:
-            logging.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
+            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
 
-        logging.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
         return response.json()
 
     except Exception as e:
-        logging.error(f"❌ Exception while sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 
 if __name__ == "__main__":
