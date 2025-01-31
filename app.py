@@ -764,7 +764,7 @@ logger = logging.getLogger(__name__)
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
-    vapi_url = "https://api.vapi.ai/v1/call"
+    vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
