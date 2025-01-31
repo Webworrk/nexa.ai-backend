@@ -662,6 +662,9 @@ def get_user_context():
             ]
         })
 
+        # ✅ ADD THIS DEBUG LOG HERE
+        logger.info(f"🔍 User Data Retrieved from MongoDB: {json.dumps(user, indent=2, default=str)}")
+
         # ✅ Handle New Users
         if not user:
             logger.warning(f"⚠️ No user found for {standardized_phone}")
