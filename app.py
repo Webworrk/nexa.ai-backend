@@ -771,11 +771,13 @@ def send_data_to_vapi(phone_number, user_data):
 
     # ✅ Prepare Data for Vapi
     vapi_payload = {
-        "assistantId": VAPI_ASSISTANT_ID,
+        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",
+        "customer": {
         "phoneNumber": {  # ✅ Correct format for Vapi API
             "twilioPhoneNumber": "+18454796197",
             "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",  # Add your Twilio Account SID
             "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9"  # Add your Twilio Auth Token
+          }
         },
         "metadata": {
             "name": user_data["user_info"].get("name"),
