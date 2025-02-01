@@ -797,7 +797,6 @@ def _prepare_user_context(user: dict, request_id: str) -> dict:
 
 
 
-
 @app.route("/test-redis", methods=["GET", "POST"])
 def test_redis():
     try:
