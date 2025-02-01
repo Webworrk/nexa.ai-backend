@@ -1,27 +1,22 @@
-import os
-import json
-import time
-import uuid
-import hmac
-import hashlib
-import logging
-import traceback
-from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
-import redis
-import requests
-from dotenv import load_dotenv
-from openai import OpenAI
-from bson import ObjectId
 from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import redis
 from flask_caching import Cache
+import requests
 from pymongo import MongoClient
-from pymongo.errors import ServerSelectionTimeoutError
+from dotenv import load_dotenv
+import os
+from datetime import datetime
+import json
+import hashlib
+import traceback
+import logging
+from openai import OpenAI
+from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
-
+from pymongo.errors import ServerSelectionTimeoutError
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -66,19 +61,6 @@ VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-
-# Validate Twilio phone number format
-if not TWILIO_PHONE_NUMBER or not TWILIO_PHONE_NUMBER.startswith('+'):
-    raise ValueError("❌ TWILIO_PHONE_NUMBER must be in E.164 format (start with '+')")
-
-
-# Add the constants here
-TIMEOUT_SECONDS = 30
-MAX_RETRIES = 3
-DELAY_SECONDS = 2
 
 def validate_vapi_request(request):
     """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
@@ -352,14 +334,14 @@ def sync_vapi_calllogs():
     try:
         is_valid, error_response = validate_vapi_request(request)
         if not is_valid:
-            return error_response
+            return error_response  # This correctly returns the error
 
+        
         headers = {
             "Authorization": f"Bearer {VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
 
-        # Using the defined TIMEOUT_SECONDS constant
         response = requests.get(
             "https://api.vapi.ai/call", 
             headers=headers, 
@@ -632,181 +614,119 @@ def process_transcript(user_phone, transcript):
 
 @app.route("/user-context", methods=["GET", "POST"])
 @limiter.limit("60 per minute", override_defaults=False)
-@cache.memoize(timeout=300)
+@cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_user_context():
-    """
-    Fetch and return user context for Vapi.ai integration.
-    
-    Returns:
-        tuple: JSON response and HTTP status code
-        
-    Error Codes:
-        400: Bad Request - Invalid input data
-        401: Unauthorized - Invalid authentication
-        404: Not Found - User not found
-        429: Too Many Requests - Rate limit exceeded
-        500: Internal Server Error - Server-side error
-    """
-    request_id = str(uuid.uuid4())
-    logger.info(f"📥 Request {request_id}: Processing {request.method} request to /user-context")
+    """Fetch user context for Vapi.ai"""
+
+    # ✅ Validate Vapi request FIRST
+    is_valid, error_response = validate_vapi_request(request)
+    if not is_valid:
+        return error_response  # ✅ This will now correctly return the response
 
     try:
-        # Validate Vapi request
-        is_valid, error_response = validate_vapi_request(request)
-        if not is_valid:
-            logger.error(f"❌ Request {request_id}: Authentication failed")
-            return error_response
+        # ✅ Log Request Details
+        logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
 
-        # Extract and validate phone number
-        phone_number = _extract_phone_number(request)
+        # ✅ Extract phone number safely from GET or POST
+        phone_number = None
+
+        if request.method == "POST":
+            try:
+                data = request.get_json(force=True, silent=True) or {}
+                logger.info(f"📝 Received JSON: {json.dumps(data, indent=2)}")
+                phone_number = data.get("phone")
+            except Exception as e:
+                logger.warning(f"⚠️ JSON Parsing Error: {str(e)}")
+                return jsonify({"error": "Invalid JSON", "details": str(e)}), 400
+        else:
+            phone_number = request.args.get("phone")  # GET request
+
+        # ✅ Check if phone_number is missing
         if not phone_number:
-            logger.error(f"❌ Request {request_id}: Missing phone number")
-            return jsonify({
-                "error": "Missing phone number",
-                "request_id": request_id
-            }), 400
+            logger.error("❌ Missing phone number in request")
+            return jsonify({"error": "Missing phone number"}), 400
 
-        # Standardize phone number
+        logger.info(f"📞 Received Phone Number: {phone_number}")
+
+        # ✅ Validate & Standardize Phone Number
         try:
             standardized_phone = standardize_phone_number(phone_number)
-            logger.info(f"✅ Request {request_id}: Standardized phone: {standardized_phone}")
         except ValueError as ve:
-            logger.error(f"❌ Request {request_id}: Invalid phone format - {str(ve)}")
-            return jsonify({
-                "error": "Invalid phone format",
-                "details": str(ve),
-                "request_id": request_id
-            }), 400
+            logger.error(f"❌ Invalid Phone Number Format: {phone_number} - {str(ve)}")
+            return jsonify({"error": "Invalid phone format", "details": str(ve)}), 400
 
-        # Fetch user data with retry logic
-        user = _fetch_user_with_retry(standardized_phone)
+        logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
+
+        # ✅ Query MongoDB for user
+        user = users_collection.find_one({
+            "$or": [
+                {"Phone": standardized_phone},
+                {"Phone": standardized_phone.replace("+", "")},
+                {"Phone": standardized_phone[-10:]}  # ✅ Check last 10 digits
+            ]
+        })
+
+        # ✅ Handle New Users
         if not user:
-            logger.warning(f"⚠️ Request {request_id}: No user found for {standardized_phone}")
-            return jsonify({
-                "exists": False,
-                "message": "New user detected",
-                "request_id": request_id
-            }), 200
+            logger.warning(f"⚠️ No user found for {standardized_phone}")
+            return jsonify({"exists": False, "message": "New user detected"}), 200
 
-        # Process user data and prepare response
-        try:
-            context = _prepare_user_context(user, request_id)
-        except KeyError as ke:
-            logger.error(f"❌ Request {request_id}: Error preparing context - {str(ke)}")
-            return jsonify({
-                "error": "Invalid user data structure",
-                "details": str(ke),
-                "request_id": request_id
-            }), 500
+        user["_id"] = str(user["_id"])  # ✅ Convert _id safely
 
-        # Send data to Vapi
-        vapi_response = send_data_to_vapi(standardized_phone, context)
-        if vapi_response:
-            context["vapi_call_id"] = vapi_response.get("id")
-            logger.info(f"✅ Request {request_id}: Successfully sent to Vapi")
-        else:
-            logger.warning(f"⚠️ Request {request_id}: Failed to send to Vapi")
+        # ✅ Extract Phone Number Properly
+        user_phone = user.get("Phone")
+        if not user_phone:
+            logger.error("❌ User data is missing phone number")
+            return jsonify({"error": "User data is missing phone number"}), 400
+
+        # ✅ Fetch recent calls safely
+        recent_calls = user.get("Calls", [])
+        if not isinstance(recent_calls, list):
+            recent_calls = []
+
+        networking_goals = [
+            call.get("Networking Goal") for call in recent_calls if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
+        ]
+
+        # ✅ Structure Data for Response
+        context = {
+            "exists": True,
+            "user_info": {
+                "name": user.get("Name"),
+                "profession": user.get("Profession"),
+                "bio": user.get("Bio"),
+                "email": user.get("Email"),
+                "nexa_id": user.get("Nexa ID"),
+                "signup_status": user.get("Signup Status"),
+                "total_calls": len(user.get("Calls", [])),
+                "networking_goals": networking_goals,
+                "created_at": user.get("Created At"),
+                "last_updated": user.get("Last Updated")
+            },
+            "recent_interactions": [{
+                "call_number": call.get("Call Number"),
+                "timestamp": call.get("Timestamp"),
+                "networking_goal": call.get("Networking Goal"),
+                "meeting_type": call.get("Meeting Type"),
+                "meeting_status": call.get("Meeting Status"),
+                "proposed_date": call.get("Proposed Meeting Date"),
+                "proposed_time": call.get("Proposed Meeting Time"),
+                "call_summary": call.get("Call Summary")
+            } for call in recent_calls[-3:]],  # ✅ Send last 3 calls only
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        logger.info(f"🚀 Final User Context Prepared: {json.dumps(context, indent=2, default=str)}")
+
+        # ✅ Send Data to Vapi
+        send_data_to_vapi(user_phone, context)
 
         return jsonify(context), 200
 
     except Exception as e:
-        logger.error(f"❌ Request {request_id}: Unexpected error - {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
-        return jsonify({
-            "error": "Internal server error",
-            "details": str(e),
-            "request_id": request_id
-        }), 500
+        logger.error(f"❌ Error fetching user context: {str(e)}")
+        return jsonify({"error": "Failed to fetch user context", "details": str(e)}), 500
 
-def _extract_phone_number(request) -> Optional[str]:
-    """Extract phone number from request data."""
-    if request.method == "POST":
-        try:
-            data = request.get_json(force=True, silent=True) or {}
-            logger.info(f"📝 Received JSON: {json.dumps(data, indent=2)}")
-            return data.get("phone")
-        except Exception as e:
-            logger.warning(f"⚠️ JSON Parsing Error: {str(e)}")
-            return None
-    return request.args.get("phone")
-
-def _fetch_user_with_retry(phone: str, max_retries: int = 3) -> Optional[dict]:
-    """Fetch user data with retry logic."""
-    retry_count = 0
-    while retry_count < max_retries:
-        try:
-            user = users_collection.find_one({
-                "$or": [
-                    {"Phone": phone},
-                    {"Phone": phone.replace("+", "")},
-                    {"Phone": phone[-10:]}
-                ]
-            })
-            if user:
-                user["_id"] = str(user["_id"])
-                return user
-            return None
-        except Exception as e:
-            retry_count += 1
-            if retry_count == max_retries:
-                logger.error(f"❌ Failed to fetch user after {max_retries} attempts: {str(e)}")
-                raise
-            time.sleep(0.5 * retry_count)  # Exponential backoff
-
-def _prepare_user_context(user: dict, request_id: str) -> dict:
-    """Prepare user context data structure."""
-    # Validate required fields
-    if not user.get("Phone"):
-        raise KeyError("User data missing phone number")
-
-    # Process recent calls
-    recent_calls = user.get("Calls", [])
-    if not isinstance(recent_calls, list):
-        logger.warning(f"⚠️ Request {request_id}: Invalid calls data, using empty list")
-        recent_calls = []
-
-    # Extract networking goals
-    networking_goals = [
-        call.get("Networking Goal")
-        for call in recent_calls
-        if isinstance(call, dict) 
-        and call.get("Networking Goal") 
-        and call.get("Networking Goal") != "Not Mentioned"
-    ]
-
-    # Build context structure
-    context = {
-        "exists": True,
-        "user_info": {
-            "name": user.get("Name", "Not Mentioned"),
-            "profession": user.get("Profession", "Not Mentioned"),
-            "bio": user.get("Bio", "Not Mentioned"),
-            "email": user.get("Email", "Not Mentioned"),
-            "nexa_id": user.get("Nexa ID"),
-            "signup_status": user.get("Signup Status", "Incomplete"),
-            "total_calls": len(recent_calls),
-            "networking_goals": networking_goals,
-            "created_at": user.get("Created At"),
-            "last_updated": user.get("Last Updated", datetime.utcnow().isoformat())
-        },
-        "recent_interactions": [
-            {
-                "call_number": call.get("Call Number"),
-                "timestamp": call.get("Timestamp"),
-                "networking_goal": call.get("Networking Goal", "Not Mentioned"),
-                "meeting_type": call.get("Meeting Type", "Not Mentioned"),
-                "meeting_status": call.get("Meeting Status", "Not Mentioned"),
-                "proposed_date": call.get("Proposed Meeting Date", "Not Mentioned"),
-                "proposed_time": call.get("Proposed Meeting Time", "Not Mentioned"),
-                "call_summary": call.get("Call Summary", "Not Mentioned")
-            }
-            for call in recent_calls[-3:]  # Last 3 calls only
-        ],
-        "timestamp": datetime.utcnow().isoformat(),
-        "request_id": request_id
-    }
-
-    return context
 
 
 
@@ -835,45 +755,26 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
-def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
-    """
-    Send User Context Data to Vapi.ai with proper response handling
-    
-    Args:
-        phone_number (str): The user's phone number
-        user_data (dict): User context data to send
-        
-    Returns:
-        dict: Vapi response data on success, None on failure
-    """
-    if not phone_number:
-        logger.error("❌ Missing phone number for Vapi API call")
-        return None
-
-    # Get Twilio credentials from environment
-    twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
-    twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-    # Validate Twilio phone number format
-    if not twilio_phone or not twilio_phone.startswith('+'):
-        logger.error("❌ Invalid Twilio phone number format. Must start with '+'")
-        return None
-
+def send_data_to_vapi(phone_number, user_data):
+    """Send User Context Data to Vapi.ai"""
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Prepare payload with validated phone numbers
+    if not phone_number:
+        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
+        return None
+
+    # Prepare payload according to Vapi API schema
     vapi_payload = {
         "type": "outboundPhoneCall",
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "twilioAccountSid": TWILIO_ACCOUNT_SID,
-            "twilioAuthToken": TWILIO_AUTH_TOKEN,
-            "twilioPhoneNumber": TWILIO_PHONE_NUMBER  # This will now be properly formatted
+            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
+            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9",
+            "twilioPhoneNumber": "+18454796197"
         },
         "customer": {
             "numberE164CheckEnabled": True,
@@ -909,56 +810,31 @@ def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
         }
     }
 
-    logger.info(f"📤 Sending data to Vapi for user {phone_number}")
-    logger.debug(f"Payload: {json.dumps(vapi_payload, indent=2)}")
+    logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
 
     try:
         response = requests.post(
-            vapi_url,
-            json=vapi_payload,
+            vapi_url, 
+            json=vapi_payload, 
             headers=headers,
-            timeout=TIMEOUT_SECONDS
+            timeout=30
         )
-        
-        # Handle different response status codes appropriately
-        if response.status_code in (200, 201):  # Both are success cases for Vapi
-            response_data = response.json()
-            logger.info(f"✅ Successfully sent data to Vapi. Call ID: {response_data.get('id')}")
-            logger.debug(f"Vapi Response: {json.dumps(response_data, indent=2)}")
-            return response_data
-            
-        elif response.status_code == 400:
-            logger.error(f"❌ Bad request to Vapi API: {response.text}")
-            return None
-            
-        elif response.status_code == 401:
-            logger.error("❌ Authentication failed with Vapi API")
-            return None
-            
-        elif response.status_code == 429:
-            logger.error("❌ Rate limit exceeded with Vapi API")
-            return None
-            
-        else:
-            logger.error(f"❌ Unexpected status code from Vapi: {response.status_code}")
-            logger.error(f"Response: {response.text}")
+
+        if response.status_code != 200:
+            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
 
+        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
+        return response.json()
+
     except requests.exceptions.Timeout:
-        logger.error("❌ Timeout while sending data to Vapi (30s)")
+        logger.error("❌ Timeout while sending data to Vapi")
         return None
-        
     except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Network error while sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Request Exception while sending data to Vapi: {str(e)}")
         return None
-        
-    except json.JSONDecodeError:
-        logger.error("❌ Failed to parse Vapi response as JSON")
-        return None
-        
     except Exception as e:
-        logger.error(f"❌ Unexpected error while sending data to Vapi: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
+        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
 
 if __name__ == "__main__":
