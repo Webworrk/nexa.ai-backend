@@ -843,20 +843,30 @@ def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
         logger.error("❌ Missing phone number for Vapi API call")
         return None
 
+    # Get Twilio credentials from environment
+    twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+    twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+
+    # Validate Twilio phone number format
+    if not twilio_phone or not twilio_phone.startswith('+'):
+        logger.error("❌ Invalid Twilio phone number format. Must start with '+'")
+        return None
+
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Prepare payload with environment variables for credentials
+    # Prepare payload with validated phone numbers
     vapi_payload = {
         "type": "outboundPhoneCall",
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
-            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN"),
-            "twilioPhoneNumber": os.getenv("TWILIO_PHONE_NUMBER")
+            "twilioAccountSid": twilio_sid,
+            "twilioAuthToken": twilio_token,
+            "twilioPhoneNumber": twilio_phone  # Must be in E.164 format (e.g., +18454796197)
         },
         "customer": {
             "numberE164CheckEnabled": True,
@@ -893,13 +903,14 @@ def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
     }
 
     logger.info(f"📤 Sending data to Vapi for user {phone_number}")
+    logger.debug(f"Payload: {json.dumps(vapi_payload, indent=2)}")
 
     try:
         response = requests.post(
             vapi_url,
             json=vapi_payload,
             headers=headers,
-            timeout=30
+            timeout=TIMEOUT_SECONDS
         )
         
         # Handle different response status codes appropriately
@@ -908,6 +919,10 @@ def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
             logger.info(f"✅ Successfully sent data to Vapi. Call ID: {response_data.get('id')}")
             logger.debug(f"Vapi Response: {json.dumps(response_data, indent=2)}")
             return response_data
+            
+        elif response.status_code == 400:
+            logger.error(f"❌ Bad request to Vapi API: {response.text}")
+            return None
             
         elif response.status_code == 401:
             logger.error("❌ Authentication failed with Vapi API")
