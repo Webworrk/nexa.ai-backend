@@ -66,6 +66,13 @@ VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+
+# Validate Twilio phone number format
+if not TWILIO_PHONE_NUMBER or not TWILIO_PHONE_NUMBER.startswith('+'):
+    raise ValueError("❌ TWILIO_PHONE_NUMBER must be in E.164 format (start with '+')")
 
 
 # Add the constants here
@@ -864,9 +871,9 @@ def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
         "type": "outboundPhoneCall",
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "twilioAccountSid": twilio_sid,
-            "twilioAuthToken": twilio_token,
-            "twilioPhoneNumber": twilio_phone  # Must be in E.164 format (e.g., +18454796197)
+            "twilioAccountSid": TWILIO_ACCOUNT_SID,
+            "twilioAuthToken": TWILIO_AUTH_TOKEN,
+            "twilioPhoneNumber": TWILIO_PHONE_NUMBER  # This will now be properly formatted
         },
         "customer": {
             "numberE164CheckEnabled": True,
