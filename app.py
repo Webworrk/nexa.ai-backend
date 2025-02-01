@@ -767,11 +767,11 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None
 
-    # Fix the payload structure according to Vapi.ai API docs
+    # Prepare payload according to Vapi API docs
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "phoneNumber": phone_number  # Changed from "number" to "phoneNumber"
+            "identifier": phone_number  # This is the correct field name per docs
         },
         "metadata": {
             "user": {
@@ -829,6 +829,7 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
+
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
