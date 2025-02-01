@@ -67,6 +67,12 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 VAPI_SECRET_TOKEN = os.getenv("VAPI_SECRET_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
+
+# Add the constants here
+TIMEOUT_SECONDS = 30
+MAX_RETRIES = 3
+DELAY_SECONDS = 2
+
 def validate_vapi_request(request):
     """Validate Vapi.ai requests via query parameters (since headers disappear in tools)."""
     token = request.args.get("secret") or request.headers.get("x-vapi-secret")  # Check both
@@ -339,14 +345,14 @@ def sync_vapi_calllogs():
     try:
         is_valid, error_response = validate_vapi_request(request)
         if not is_valid:
-            return error_response  # This correctly returns the error
+            return error_response
 
-        
         headers = {
             "Authorization": f"Bearer {VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
 
+        # Using the defined TIMEOUT_SECONDS constant
         response = requests.get(
             "https://api.vapi.ai/call", 
             headers=headers, 
