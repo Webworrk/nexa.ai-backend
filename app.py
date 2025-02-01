@@ -755,31 +755,28 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
-import requests
-import json
-import logging
-
-logger = logging.getLogger(__name__)
-
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
 
     vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
         "Content-Type": "application/json"
     }
 
     # ✅ Validate Phone Number
     if not phone_number:
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None
+        return None  # Stop execution if phone number is missing
 
     # ✅ Prepare Data for Vapi
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": phone_number,  # ✅ Move it outside "customer"
-        "customer": {},  # ✅ Keep customer empty if needed
+        "phoneNumber": {  # ✅ Correct format for Vapi API
+            "twilioPhoneNumber": "+18454796197",
+            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",  # Add your Twilio Account SID
+            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9"  # Add your Twilio Auth Token
+        },
         "metadata": {
             "name": user_data["user_info"].get("name"),
             "profession": user_data["user_info"].get("profession"),
@@ -799,7 +796,7 @@ def send_data_to_vapi(phone_number, user_data):
                     "proposed_time": call.get("proposed_time"),
                     "call_summary": call.get("call_summary")
                 }
-                for call in user_data.get("recent_interactions", [])[-3:]
+                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
             ]
         }
     }
@@ -820,8 +817,6 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
-
 
 
 
