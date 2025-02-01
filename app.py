@@ -769,7 +769,7 @@ def send_data_to_vapi(phone_number, user_data):
 
     # Prepare payload according to Vapi API schema
     vapi_payload = {
-        "type": "outboundPhoneCall",  # Specify the type of call
+        "type": "outboundPhoneCall",
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
             "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
@@ -807,12 +807,6 @@ def send_data_to_vapi(phone_number, user_data):
                 }
                 for call in user_data.get("recent_interactions", [])[-3:]
             ]
-        },
-        "artifactPlan": {
-            "recordingEnabled": True,
-            "transcriptPlan": {
-                "enabled": True
-            }
         }
     }
 
