@@ -614,118 +614,181 @@ def process_transcript(user_phone, transcript):
 
 @app.route("/user-context", methods=["GET", "POST"])
 @limiter.limit("60 per minute", override_defaults=False)
-@cache.memoize(timeout=300)  # Cache for 5 minutes
+@cache.memoize(timeout=300)
 def get_user_context():
-    """Fetch user context for Vapi.ai"""
-
-    # ✅ Validate Vapi request FIRST
-    is_valid, error_response = validate_vapi_request(request)
-    if not is_valid:
-        return error_response  # ✅ This will now correctly return the response
+    """
+    Fetch and return user context for Vapi.ai integration.
+    
+    Returns:
+        tuple: JSON response and HTTP status code
+        
+    Error Codes:
+        400: Bad Request - Invalid input data
+        401: Unauthorized - Invalid authentication
+        404: Not Found - User not found
+        429: Too Many Requests - Rate limit exceeded
+        500: Internal Server Error - Server-side error
+    """
+    request_id = str(uuid.uuid4())
+    logger.info(f"📥 Request {request_id}: Processing {request.method} request to /user-context")
 
     try:
-        # ✅ Log Request Details
-        logger.info(f"📥 Received Request: {request.method}, Headers: {dict(request.headers)}")
+        # Validate Vapi request
+        is_valid, error_response = validate_vapi_request(request)
+        if not is_valid:
+            logger.error(f"❌ Request {request_id}: Authentication failed")
+            return error_response
 
-        # ✅ Extract phone number safely from GET or POST
-        phone_number = None
-
-        if request.method == "POST":
-            try:
-                data = request.get_json(force=True, silent=True) or {}
-                logger.info(f"📝 Received JSON: {json.dumps(data, indent=2)}")
-                phone_number = data.get("phone")
-            except Exception as e:
-                logger.warning(f"⚠️ JSON Parsing Error: {str(e)}")
-                return jsonify({"error": "Invalid JSON", "details": str(e)}), 400
-        else:
-            phone_number = request.args.get("phone")  # GET request
-
-        # ✅ Check if phone_number is missing
+        # Extract and validate phone number
+        phone_number = _extract_phone_number(request)
         if not phone_number:
-            logger.error("❌ Missing phone number in request")
-            return jsonify({"error": "Missing phone number"}), 400
+            logger.error(f"❌ Request {request_id}: Missing phone number")
+            return jsonify({
+                "error": "Missing phone number",
+                "request_id": request_id
+            }), 400
 
-        logger.info(f"📞 Received Phone Number: {phone_number}")
-
-        # ✅ Validate & Standardize Phone Number
+        # Standardize phone number
         try:
             standardized_phone = standardize_phone_number(phone_number)
+            logger.info(f"✅ Request {request_id}: Standardized phone: {standardized_phone}")
         except ValueError as ve:
-            logger.error(f"❌ Invalid Phone Number Format: {phone_number} - {str(ve)}")
-            return jsonify({"error": "Invalid phone format", "details": str(ve)}), 400
+            logger.error(f"❌ Request {request_id}: Invalid phone format - {str(ve)}")
+            return jsonify({
+                "error": "Invalid phone format",
+                "details": str(ve),
+                "request_id": request_id
+            }), 400
 
-        logger.info(f"✅ Standardized Phone Number: {standardized_phone}")
-
-        # ✅ Query MongoDB for user
-        user = users_collection.find_one({
-            "$or": [
-                {"Phone": standardized_phone},
-                {"Phone": standardized_phone.replace("+", "")},
-                {"Phone": standardized_phone[-10:]}  # ✅ Check last 10 digits
-            ]
-        })
-
-        # ✅ Handle New Users
+        # Fetch user data with retry logic
+        user = _fetch_user_with_retry(standardized_phone)
         if not user:
-            logger.warning(f"⚠️ No user found for {standardized_phone}")
-            return jsonify({"exists": False, "message": "New user detected"}), 200
+            logger.warning(f"⚠️ Request {request_id}: No user found for {standardized_phone}")
+            return jsonify({
+                "exists": False,
+                "message": "New user detected",
+                "request_id": request_id
+            }), 200
 
-        user["_id"] = str(user["_id"])  # ✅ Convert _id safely
+        # Process user data and prepare response
+        try:
+            context = _prepare_user_context(user, request_id)
+        except KeyError as ke:
+            logger.error(f"❌ Request {request_id}: Error preparing context - {str(ke)}")
+            return jsonify({
+                "error": "Invalid user data structure",
+                "details": str(ke),
+                "request_id": request_id
+            }), 500
 
-        # ✅ Extract Phone Number Properly
-        user_phone = user.get("Phone")
-        if not user_phone:
-            logger.error("❌ User data is missing phone number")
-            return jsonify({"error": "User data is missing phone number"}), 400
-
-        # ✅ Fetch recent calls safely
-        recent_calls = user.get("Calls", [])
-        if not isinstance(recent_calls, list):
-            recent_calls = []
-
-        networking_goals = [
-            call.get("Networking Goal") for call in recent_calls if isinstance(call, dict) and call.get("Networking Goal") and call.get("Networking Goal") != "Not Mentioned"
-        ]
-
-        # ✅ Structure Data for Response
-        context = {
-            "exists": True,
-            "user_info": {
-                "name": user.get("Name"),
-                "profession": user.get("Profession"),
-                "bio": user.get("Bio"),
-                "email": user.get("Email"),
-                "nexa_id": user.get("Nexa ID"),
-                "signup_status": user.get("Signup Status"),
-                "total_calls": len(user.get("Calls", [])),
-                "networking_goals": networking_goals,
-                "created_at": user.get("Created At"),
-                "last_updated": user.get("Last Updated")
-            },
-            "recent_interactions": [{
-                "call_number": call.get("Call Number"),
-                "timestamp": call.get("Timestamp"),
-                "networking_goal": call.get("Networking Goal"),
-                "meeting_type": call.get("Meeting Type"),
-                "meeting_status": call.get("Meeting Status"),
-                "proposed_date": call.get("Proposed Meeting Date"),
-                "proposed_time": call.get("Proposed Meeting Time"),
-                "call_summary": call.get("Call Summary")
-            } for call in recent_calls[-3:]],  # ✅ Send last 3 calls only
-            "timestamp": datetime.utcnow().isoformat()
-        }
-
-        logger.info(f"🚀 Final User Context Prepared: {json.dumps(context, indent=2, default=str)}")
-
-        # ✅ Send Data to Vapi
-        send_data_to_vapi(user_phone, context)
+        # Send data to Vapi
+        vapi_response = send_data_to_vapi(standardized_phone, context)
+        if vapi_response:
+            context["vapi_call_id"] = vapi_response.get("id")
+            logger.info(f"✅ Request {request_id}: Successfully sent to Vapi")
+        else:
+            logger.warning(f"⚠️ Request {request_id}: Failed to send to Vapi")
 
         return jsonify(context), 200
 
     except Exception as e:
-        logger.error(f"❌ Error fetching user context: {str(e)}")
-        return jsonify({"error": "Failed to fetch user context", "details": str(e)}), 500
+        logger.error(f"❌ Request {request_id}: Unexpected error - {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Internal server error",
+            "details": str(e),
+            "request_id": request_id
+        }), 500
+
+def _extract_phone_number(request) -> Optional[str]:
+    """Extract phone number from request data."""
+    if request.method == "POST":
+        try:
+            data = request.get_json(force=True, silent=True) or {}
+            logger.info(f"📝 Received JSON: {json.dumps(data, indent=2)}")
+            return data.get("phone")
+        except Exception as e:
+            logger.warning(f"⚠️ JSON Parsing Error: {str(e)}")
+            return None
+    return request.args.get("phone")
+
+def _fetch_user_with_retry(phone: str, max_retries: int = 3) -> Optional[dict]:
+    """Fetch user data with retry logic."""
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            user = users_collection.find_one({
+                "$or": [
+                    {"Phone": phone},
+                    {"Phone": phone.replace("+", "")},
+                    {"Phone": phone[-10:]}
+                ]
+            })
+            if user:
+                user["_id"] = str(user["_id"])
+                return user
+            return None
+        except Exception as e:
+            retry_count += 1
+            if retry_count == max_retries:
+                logger.error(f"❌ Failed to fetch user after {max_retries} attempts: {str(e)}")
+                raise
+            time.sleep(0.5 * retry_count)  # Exponential backoff
+
+def _prepare_user_context(user: dict, request_id: str) -> dict:
+    """Prepare user context data structure."""
+    # Validate required fields
+    if not user.get("Phone"):
+        raise KeyError("User data missing phone number")
+
+    # Process recent calls
+    recent_calls = user.get("Calls", [])
+    if not isinstance(recent_calls, list):
+        logger.warning(f"⚠️ Request {request_id}: Invalid calls data, using empty list")
+        recent_calls = []
+
+    # Extract networking goals
+    networking_goals = [
+        call.get("Networking Goal")
+        for call in recent_calls
+        if isinstance(call, dict) 
+        and call.get("Networking Goal") 
+        and call.get("Networking Goal") != "Not Mentioned"
+    ]
+
+    # Build context structure
+    context = {
+        "exists": True,
+        "user_info": {
+            "name": user.get("Name", "Not Mentioned"),
+            "profession": user.get("Profession", "Not Mentioned"),
+            "bio": user.get("Bio", "Not Mentioned"),
+            "email": user.get("Email", "Not Mentioned"),
+            "nexa_id": user.get("Nexa ID"),
+            "signup_status": user.get("Signup Status", "Incomplete"),
+            "total_calls": len(recent_calls),
+            "networking_goals": networking_goals,
+            "created_at": user.get("Created At"),
+            "last_updated": user.get("Last Updated", datetime.utcnow().isoformat())
+        },
+        "recent_interactions": [
+            {
+                "call_number": call.get("Call Number"),
+                "timestamp": call.get("Timestamp"),
+                "networking_goal": call.get("Networking Goal", "Not Mentioned"),
+                "meeting_type": call.get("Meeting Type", "Not Mentioned"),
+                "meeting_status": call.get("Meeting Status", "Not Mentioned"),
+                "proposed_date": call.get("Proposed Meeting Date", "Not Mentioned"),
+                "proposed_time": call.get("Proposed Meeting Time", "Not Mentioned"),
+                "call_summary": call.get("Call Summary", "Not Mentioned")
+            }
+            for call in recent_calls[-3:]  # Last 3 calls only
+        ],
+        "timestamp": datetime.utcnow().isoformat(),
+        "request_id": request_id
+    }
+
+    return context
 
 
 
