@@ -779,7 +779,7 @@ def send_data_to_vapi(phone_number, user_data):
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": phone_number  # ✅ FIXED: Use "number" instead of "phoneNumber"
+            "number": phone_number  # ❌ WRONG! Should be "phoneNumber"
         },
         "metadata": {  # ✅ Store all user info in metadata
             "name": user_data["user_info"].get("name"),
