@@ -769,23 +769,23 @@ def send_data_to_vapi(phone_number, user_data):
 
     # Fix the payload structure according to Vapi.ai API docs
     vapi_payload = {
-        "assistantId": VAPI_ASSISTANT_ID,  # Use environment variable
+        "assistantId": VAPI_ASSISTANT_ID,
         "customer": {
-            "number": phone_number  # Simplified phone number structure
+            "phoneNumber": phone_number  # Changed from "number" to "phoneNumber"
         },
         "metadata": {
-            "user": {  # Nest user info under a 'user' key
+            "user": {
                 "name": user_data["user_info"].get("name"),
                 "profession": user_data["user_info"].get("profession"),
                 "bio": user_data["user_info"].get("bio"),
                 "signup_status": user_data["user_info"].get("signup_status"),
                 "nexa_id": user_data["user_info"].get("nexa_id")
             },
-            "networking": {  # Group networking related data
+            "networking": {
                 "goals": user_data["user_info"].get("networking_goals", []),
                 "total_calls": user_data["user_info"].get("total_calls", 0)
             },
-            "recent_calls": [  # Format recent calls data
+            "recent_calls": [
                 {
                     "number": call.get("call_number"),
                     "date": call.get("timestamp"),
@@ -810,7 +810,7 @@ def send_data_to_vapi(phone_number, user_data):
             vapi_url, 
             json=vapi_payload, 
             headers=headers,
-            timeout=30  # Add timeout
+            timeout=30
         )
 
         if response.status_code != 200:
@@ -829,7 +829,6 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
