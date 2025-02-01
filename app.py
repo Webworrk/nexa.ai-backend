@@ -755,26 +755,35 @@ def test_endpoint():
     return jsonify({"message": "Received data", "data": data}), 200
 
 
-def send_data_to_vapi(phone_number, user_data):
-    """Send User Context Data to Vapi.ai"""
+def send_data_to_vapi(phone_number: str, user_data: dict) -> dict:
+    """
+    Send User Context Data to Vapi.ai with proper response handling
+    
+    Args:
+        phone_number (str): The user's phone number
+        user_data (dict): User context data to send
+        
+    Returns:
+        dict: Vapi response data on success, None on failure
+    """
+    if not phone_number:
+        logger.error("❌ Missing phone number for Vapi API call")
+        return None
+
     vapi_url = "https://api.vapi.ai/call"
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    if not phone_number:
-        logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None
-
-    # Prepare payload according to Vapi API schema
+    # Prepare payload with environment variables for credentials
     vapi_payload = {
         "type": "outboundPhoneCall",
         "assistantId": VAPI_ASSISTANT_ID,
         "phoneNumber": {
-            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
-            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9",
-            "twilioPhoneNumber": "+18454796197"
+            "twilioAccountSid": os.getenv("TWILIO_ACCOUNT_SID"),
+            "twilioAuthToken": os.getenv("TWILIO_AUTH_TOKEN"),
+            "twilioPhoneNumber": os.getenv("TWILIO_PHONE_NUMBER")
         },
         "customer": {
             "numberE164CheckEnabled": True,
@@ -810,31 +819,51 @@ def send_data_to_vapi(phone_number, user_data):
         }
     }
 
-    logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
+    logger.info(f"📤 Sending data to Vapi for user {phone_number}")
 
     try:
         response = requests.post(
-            vapi_url, 
-            json=vapi_payload, 
+            vapi_url,
+            json=vapi_payload,
             headers=headers,
             timeout=30
         )
-
-        if response.status_code != 200:
-            logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
+        
+        # Handle different response status codes appropriately
+        if response.status_code in (200, 201):  # Both are success cases for Vapi
+            response_data = response.json()
+            logger.info(f"✅ Successfully sent data to Vapi. Call ID: {response_data.get('id')}")
+            logger.debug(f"Vapi Response: {json.dumps(response_data, indent=2)}")
+            return response_data
+            
+        elif response.status_code == 401:
+            logger.error("❌ Authentication failed with Vapi API")
+            return None
+            
+        elif response.status_code == 429:
+            logger.error("❌ Rate limit exceeded with Vapi API")
+            return None
+            
+        else:
+            logger.error(f"❌ Unexpected status code from Vapi: {response.status_code}")
+            logger.error(f"Response: {response.text}")
             return None
 
-        logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
-        return response.json()
-
     except requests.exceptions.Timeout:
-        logger.error("❌ Timeout while sending data to Vapi")
+        logger.error("❌ Timeout while sending data to Vapi (30s)")
         return None
+        
     except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Request Exception while sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Network error while sending data to Vapi: {str(e)}")
         return None
+        
+    except json.JSONDecodeError:
+        logger.error("❌ Failed to parse Vapi response as JSON")
+        return None
+        
     except Exception as e:
-        logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
+        logger.error(f"❌ Unexpected error while sending data to Vapi: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return None
 
 if __name__ == "__main__":
