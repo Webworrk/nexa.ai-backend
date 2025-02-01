@@ -757,48 +757,48 @@ def test_endpoint():
 
 def send_data_to_vapi(phone_number, user_data):
     """Send User Context Data to Vapi.ai"""
-
     vapi_url = "https://api.vapi.ai/call"
     headers = {
-        "Authorization": f"Bearer {VAPI_API_KEY}",  # ✅ Ensure API key is correct
+        "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # ✅ Validate Phone Number
     if not phone_number:
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
-        return None  # Stop execution if phone number is missing
+        return None
 
-    # ✅ Prepare Data for Vapi
+    # Fix the payload structure according to Vapi.ai API docs
     vapi_payload = {
-        "assistantId": "271c3f96-df20-4c0e-86bd-71cb4be60616",
+        "assistantId": VAPI_ASSISTANT_ID,  # Use environment variable
         "customer": {
-        "phoneNumber": {  # ✅ Correct format for Vapi API
-            "twilioPhoneNumber": "+18454796197",
-            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",  # Add your Twilio Account SID
-            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9"  # Add your Twilio Auth Token
-          }
+            "number": phone_number  # Simplified phone number structure
         },
         "metadata": {
-            "name": user_data["user_info"].get("name"),
-            "profession": user_data["user_info"].get("profession"),
-            "bio": user_data["user_info"].get("bio"),
-            "signup_status": user_data["user_info"].get("signup_status"),
-            "nexa_id": user_data["user_info"].get("nexa_id"),
-            "networking_goals": user_data["user_info"].get("networking_goals"),
-            "total_calls": user_data["user_info"].get("total_calls"),
-            "last_calls": [
+            "user": {  # Nest user info under a 'user' key
+                "name": user_data["user_info"].get("name"),
+                "profession": user_data["user_info"].get("profession"),
+                "bio": user_data["user_info"].get("bio"),
+                "signup_status": user_data["user_info"].get("signup_status"),
+                "nexa_id": user_data["user_info"].get("nexa_id")
+            },
+            "networking": {  # Group networking related data
+                "goals": user_data["user_info"].get("networking_goals", []),
+                "total_calls": user_data["user_info"].get("total_calls", 0)
+            },
+            "recent_calls": [  # Format recent calls data
                 {
-                    "call_number": call.get("call_number"),
-                    "timestamp": call.get("timestamp"),
-                    "networking_goal": call.get("networking_goal"),
-                    "meeting_type": call.get("meeting_type"),
-                    "meeting_status": call.get("meeting_status"),
-                    "proposed_date": call.get("proposed_date"),
-                    "proposed_time": call.get("proposed_time"),
-                    "call_summary": call.get("call_summary")
+                    "number": call.get("call_number"),
+                    "date": call.get("timestamp"),
+                    "goal": call.get("networking_goal"),
+                    "meeting": {
+                        "type": call.get("meeting_type"),
+                        "status": call.get("meeting_status"),
+                        "proposed_date": call.get("proposed_date"),
+                        "proposed_time": call.get("proposed_time")
+                    },
+                    "summary": call.get("call_summary")
                 }
-                for call in user_data.get("recent_interactions", [])[-3:]  # ✅ Send last 3 calls only
+                for call in user_data.get("recent_interactions", [])[-3:]
             ]
         }
     }
@@ -806,9 +806,13 @@ def send_data_to_vapi(phone_number, user_data):
     logger.info(f"📤 Sending Data to Vapi: {json.dumps(vapi_payload, indent=2, default=str)}")
 
     try:
-        response = requests.post(vapi_url, json=vapi_payload, headers=headers)
+        response = requests.post(
+            vapi_url, 
+            json=vapi_payload, 
+            headers=headers,
+            timeout=30  # Add timeout
+        )
 
-        # ✅ Check Response Status
         if response.status_code != 200:
             logger.error(f"❌ Error Sending Data to Vapi: {response.status_code} - {response.text}")
             return None
@@ -816,10 +820,15 @@ def send_data_to_vapi(phone_number, user_data):
         logger.info(f"✅ Successfully Sent Data to Vapi. Response: {response.json()}")
         return response.json()
 
+    except requests.exceptions.Timeout:
+        logger.error("❌ Timeout while sending data to Vapi")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Request Exception while sending data to Vapi: {str(e)}")
+        return None
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 
 if __name__ == "__main__":
