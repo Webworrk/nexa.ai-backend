@@ -767,17 +767,14 @@ def send_data_to_vapi(phone_number, user_data):
         logger.error("❌ User Data Missing Phone Number. Aborting API Call.")
         return None
 
-    # Prepare payload according to Vapi API docs with Twilio configuration
+    # Prepare payload according to Vapi API docs
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
+        "recipientNumber": phone_number,  # Use recipientNumber for the target phone
         "phoneNumber": {
-            "twilioPhoneNumber": "+18454796197",  # Your Twilio phone number
-            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",  # Your Twilio Account SID
-            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9"  # Your Twilio Auth Token
-        },
-        "destination": {
-            "type": "phone",
-            "number": phone_number
+            "twilioPhoneNumber": "+18454796197",
+            "twilioAccountSid": "AC165d44c55c0cb0b3737b54bc63414a12",
+            "twilioAuthToken": "133617bcabe40538069fc8c6401c2ab9"
         },
         "metadata": {
             "user": {
