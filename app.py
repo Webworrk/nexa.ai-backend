@@ -770,8 +770,8 @@ def send_data_to_vapi(phone_number, user_data):
     # Prepare payload according to Vapi API docs
     vapi_payload = {
         "assistantId": VAPI_ASSISTANT_ID,
-        "customer": {
-            "identifier": phone_number  # This is the correct field name per docs
+        "phoneNumber": {  # Use phoneNumber object for outbound calls
+            "number": phone_number
         },
         "metadata": {
             "user": {
@@ -829,7 +829,6 @@ def send_data_to_vapi(phone_number, user_data):
     except Exception as e:
         logger.error(f"❌ Exception while sending data to Vapi: {str(e)}")
         return None
-
 
 if __name__ == "__main__":
     # Use PORT environment variable if available (for Render deployment)
